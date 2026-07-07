@@ -1,0 +1,277 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  MANAGER
+  AGENT
+  GUEST
+}
+
+enum TicketStatus {
+  OPEN
+  PENDING
+  WAITING_ON_CUSTOMER
+  WAITING_ON_THIRD_PARTY
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum MessageAuthorType {
+  CUSTOMER
+  AGENT
+  SYSTEM
+}
+
+enum MessageVisibility {
+  PUBLIC
+  INTERNAL
+}
+
+enum TicketSource {
+  EMAIL
+  EMBEDDED_FORM
+  MANUAL
+  FRESHDESK_IMPORT
+}
+
+enum TicketParticipantRole {
+  REQUESTER
+  TO
+  CC
+  OTHER
+}
+
+model User {
+  id          String    @id @default(cuid())
+  clerkId     String    @unique
+  email       String    @unique
+  name        String?
+  role        UserRole  @default(GUEST)
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+  lastSeenAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  assignedTickets Ticket[]              @relation("AssignedTickets")
+  messages        TicketMessage[]
+  statusChanges   TicketStatusHistory[]
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tickets      Ticket[]
+  messages     TicketMessage[]
+  participants TicketParticipant[]
+}
+
+model Ticket {
+  id                  String         @id @default(cuid())
+  number              Int            @unique @default(autoincrement())
+  subject             String
+  description         String?
+  status              TicketStatus   @default(OPEN)
+  priority            TicketPriority @default(NORMAL)
+  source              TicketSource   @default(EMAIL)
+  externalId          String?
+  emailThreadId       String?
+  emailReplyToken     String?        @unique
+  freshdeskTicketId   String?
+  freshdeskImportedAt DateTime?
+  freshdeskImportId   String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  resolvedAt          DateTime?
+  closedAt            DateTime?
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  assignedToId String?
+  assignedTo   User?   @relation("AssignedTickets", fields: [assignedToId], references: [id])
+
+  freshdeskImport FreshdeskImport? @relation(fields: [freshdeskImportId], references: [id], onDelete: SetNull)
+  supportFormId   String?
+  supportForm     SupportForm?     @relation(fields: [supportFormId], references: [id], onDelete: SetNull)
+
+  messages      TicketMessage[]
+  attachments   Attachment[]
+  participants  TicketParticipant[]
+  tagLinks      TicketTag[]
+  statusHistory TicketStatusHistory[]
+
+  @@index([status, priority])
+  @@index([customerId])
+  @@index([assignedToId])
+  @@index([freshdeskTicketId])
+  @@index([freshdeskImportId])
+  @@index([supportFormId])
+  @@index([emailThreadId])
+}
+
+model TicketParticipant {
+  id        String                @id @default(cuid())
+  role      TicketParticipantRole @default(OTHER)
+  email     String
+  name      String?
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@unique([ticketId, email])
+  @@index([email])
+}
+
+model TicketMessage {
+  id             String            @id @default(cuid())
+  body           String
+  bodyHtml       String?
+  authorType     MessageAuthorType
+  visibility     MessageVisibility @default(PUBLIC)
+  emailMessageId String?
+  emailFrom      String?
+  emailTo        String?
+  emailCc        String?
+  createdAt      DateTime          @default(now())
+
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  agentId String?
+  agent   User?   @relation(fields: [agentId], references: [id])
+
+  attachments Attachment[]
+
+  @@index([ticketId, createdAt])
+  @@index([emailMessageId])
+}
+
+model Attachment {
+  id          String   @id @default(cuid())
+  fileName    String
+  contentType String
+  sizeBytes   Int
+  storageKey  String
+  url         String?
+  createdAt   DateTime @default(now())
+
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  messageId String?
+  message   TicketMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId])
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String?
+  createdAt DateTime @default(now())
+
+  ticketLinks TicketTag[]
+}
+
+model TicketTag {
+  ticketId String
+  tagId    String
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, tagId])
+}
+
+model TicketStatusHistory {
+  id        String        @id @default(cuid())
+  from      TicketStatus?
+  to        TicketStatus
+  note      String?
+  createdAt DateTime      @default(now())
+
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  changedById String?
+  changedBy   User?   @relation(fields: [changedById], references: [id])
+
+  @@index([ticketId, createdAt])
+}
+
+model FreshdeskImport {
+  id           String    @id @default(cuid())
+  sourceFile   String
+  importedBy   String?
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  totalRows    Int       @default(0)
+  importedRows Int       @default(0)
+  failedRows   Int       @default(0)
+  errorSummary Json?
+
+  tickets Ticket[]
+}
+
+model SupportForm {
+  id               String   @id @default(cuid())
+  name             String
+  title            String   @default("Contact support")
+  intro            String   @default("Send a message to our support team.")
+  buttonLabel      String   @default("Support")
+  accentColor      String   @default("#0f766e")
+  embedMode        String   @default("floating")
+  placement        String   @default("bottom-right")
+  successMessage   String   @default("Thanks. We received your request.")
+  turnstileEnabled Boolean  @default(false)
+  turnstileSiteKey String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tickets Ticket[]
+}
+
+model SupportArticle {
+  id          String    @id @default(cuid())
+  title       String?
+  slug        String?   @unique
+  summary     String?
+  content     String?
+  imageUrl    String?
+  imageAlt    String?
+  isPublished Boolean   @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([isPublished, publishedAt])
+}
