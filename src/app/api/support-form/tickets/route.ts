@@ -11,6 +11,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import {
   buildCustomerConfirmationText,
+  buildCustomerConfirmationSubject,
   buildTicketReplyAddress,
   createEmailReplyToken,
   getAutomatedReplyHeaders,
@@ -349,7 +350,7 @@ async function sendEmbeddedFormConfirmation({
       },
       headers: getAutomatedReplyHeaders(),
       replyTo: buildTicketReplyAddress(ticketId, token),
-      subject: `We received your support request #${ticketNumber}`,
+      subject: buildCustomerConfirmationSubject(ticketNumber),
       textBody: buildCustomerConfirmationText(ticketNumber, ticketSubject),
       to: customerEmail,
     });

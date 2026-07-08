@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   buildCustomerConfirmationText,
+  buildCustomerConfirmationSubject,
   buildTicketReplyAddress,
   createEmailReplyToken,
   extractTicketReplyToken,
@@ -542,7 +543,7 @@ async function sendInboundConfirmation(
       },
       headers: getAutomatedReplyHeaders(),
       replyTo,
-      subject: `We received your support request #${ticketNumber}`,
+      subject: buildCustomerConfirmationSubject(ticketNumber),
       textBody: buildCustomerConfirmationText(ticketNumber, ticketSubject),
       to: customerEmail,
     });

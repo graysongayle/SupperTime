@@ -41,7 +41,10 @@ import {
 } from "@/generated/prisma/enums";
 import { getCurrentAppUser } from "@/lib/current-app-user";
 import { prisma } from "@/lib/prisma";
-import { isSupportEmailAddress } from "@/lib/support-email";
+import {
+  getSupportSender,
+  isSupportEmailAddress,
+} from "@/lib/support-email";
 import {
   getTicketAgingClass,
   getTicketAgingState,
@@ -228,6 +231,7 @@ export default async function TicketDetailPage({
     latestCustomerMessageAt: latestCustomerMessage?.createdAt ?? null,
     status: ticket.status,
   });
+  const supportSender = getSupportSender();
 
   return (
     <>
@@ -290,7 +294,10 @@ export default async function TicketDetailPage({
               createdAt: message.createdAt.toISOString(),
               customer: message.customer,
               emailCc: message.emailCc,
-              emailFrom: message.emailFrom,
+              emailFrom:
+                message.authorType === MessageAuthorType.AGENT
+                  ? supportSender.formatted
+                  : message.emailFrom,
               emailTo: message.emailTo,
               visibility: message.visibility,
             }))}
