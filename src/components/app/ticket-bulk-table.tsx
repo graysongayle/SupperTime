@@ -389,7 +389,7 @@ export function TicketBulkTable({
                 Priority
               </TableHead>
               <TableHead className="hidden w-[150px] xl:table-cell">
-                Owner
+                Assignee
               </TableHead>
               <TableHead className="w-[150px] text-right">Updated</TableHead>
             </TableRow>

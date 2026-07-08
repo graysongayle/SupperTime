@@ -1,21 +1,9 @@
 import Link from "next/link";
-import {
-  CheckCircle2,
-  Clock3,
-  Inbox,
-  UserRound,
-} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TicketBulkTable } from "@/components/app/ticket-bulk-table";
 import { TicketFilters } from "@/components/app/ticket-filters";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Prisma } from "@/generated/prisma/client";
@@ -30,6 +18,7 @@ import {
 } from "@/generated/prisma/enums";
 import { getCurrentAppUser } from "@/lib/current-app-user";
 import { prisma } from "@/lib/prisma";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +42,7 @@ const validStatuses = new Set<TicketStatusValue>(Object.values(TicketStatus));
 const validPriorities = new Set<TicketPriorityValue>(
   Object.values(TicketPriority),
 );
+const unassignedAssigneeValue = "unassigned";
 
 type TicketSearchParams = {
   q?: string;
@@ -66,8 +56,27 @@ type TicketSearchParams = {
 
 const pageSize = 25;
 
-function normalizeEnumValue<T extends string>(value: string | undefined) {
-  return value?.trim().toUpperCase() as T | undefined;
+const activeAgingStatuses = new Set<TicketStatusValue>([
+  TicketStatus.OPEN,
+  TicketStatus.PENDING,
+]);
+
+function normalizeEnumValues<T extends string>(
+  value: string | undefined,
+  validValues: Set<T>,
+) {
+  if (!value) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((item) => item.trim().toUpperCase() as T)
+        .filter((item) => validValues.has(item)),
+    ),
+  );
 }
 
 function buildHref(
@@ -97,40 +106,58 @@ function buildHref(
 }
 
 function buildTicketWhere({
-  assignee,
+  assignees,
   currentUserId,
-  priority,
+  priorities,
   q,
-  status,
+  statuses,
   view,
   includeClosed,
 }: {
-  assignee: string | null;
+  assignees: string[];
   currentUserId: string | null;
   includeClosed: boolean;
-  priority: TicketPriorityValue | null;
+  priorities: TicketPriorityValue[];
   q: string | null;
-  status: TicketStatusValue | null;
+  statuses: TicketStatusValue[];
   view: string | null;
 }) {
   const clauses: Prisma.TicketWhereInput[] = [];
 
-  if (status) {
-    clauses.push({ status });
+  if (statuses.length > 0) {
+    clauses.push({ status: { in: statuses } });
   } else if (!includeClosed) {
     clauses.push({ status: { not: TicketStatus.CLOSED } });
   }
 
-  if (priority) {
-    clauses.push({ priority });
+  if (priorities.length > 0) {
+    clauses.push({ priority: { in: priorities } });
   }
 
   if (view === "mine" && currentUserId) {
     clauses.push({ assignedToId: currentUserId });
   } else if (view === "unassigned") {
     clauses.push({ assignedToId: null });
-  } else if (assignee) {
-    clauses.push({ assignedToId: assignee });
+  } else if (assignees.length > 0) {
+    const userAssignees = assignees.filter(
+      (assignee) => assignee !== unassignedAssigneeValue,
+    );
+    const includeUnassigned = assignees.includes(unassignedAssigneeValue);
+    const assigneeClauses: Prisma.TicketWhereInput[] = [];
+
+    if (userAssignees.length > 0) {
+      assigneeClauses.push({ assignedToId: { in: userAssignees } });
+    }
+
+    if (includeUnassigned) {
+      assigneeClauses.push({ assignedToId: null });
+    }
+
+    if (assigneeClauses.length === 1) {
+      clauses.push(assigneeClauses[0]);
+    } else if (assigneeClauses.length > 1) {
+      clauses.push({ OR: assigneeClauses });
+    }
   }
 
   if (q) {
@@ -153,38 +180,71 @@ function buildTicketWhere({
   return clauses.length > 0 ? { AND: clauses } : {};
 }
 
+function formatAge(from: Date) {
+  const diffMinutes = Math.max(
+    1,
+    Math.floor((Date.now() - from.getTime()) / 60000),
+  );
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+
+  if (diffHours < 48) {
+    return `${diffHours}h`;
+  }
+
+  return `${Math.floor(diffHours / 24)}d`;
+}
+
+function getPriorityBreakdownLabel(
+  counts: Record<TicketPriorityValue, number>,
+) {
+  const orderedPriorities = [
+    TicketPriority.URGENT,
+    TicketPriority.HIGH,
+    TicketPriority.NORMAL,
+    TicketPriority.LOW,
+  ];
+
+  return orderedPriorities
+    .map((priority) => `${priorityLabels[priority]} ${counts[priority]}`)
+    .join(" · ");
+}
+
 async function getDashboardData(searchParams: TicketSearchParams) {
   const currentUser = await getCurrentAppUser();
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const rawStatus = normalizeEnumValue<TicketStatusValue>(searchParams.status);
-  const rawPriority = normalizeEnumValue<TicketPriorityValue>(
-    searchParams.priority,
+  const statuses = normalizeEnumValues<TicketStatusValue>(
+    searchParams.status,
+    validStatuses,
   );
-  const status = rawStatus && validStatuses.has(rawStatus) ? rawStatus : null;
-  const priority =
-    rawPriority && validPriorities.has(rawPriority) ? rawPriority : null;
+  const priorities = normalizeEnumValues<TicketPriorityValue>(
+    searchParams.priority,
+    validPriorities,
+  );
   const q = searchParams.q?.trim() || null;
   const view = searchParams.view?.trim() || null;
-  const assignee = searchParams.assignee?.trim() || null;
+  const assignees = searchParams.assignee
+    ? Array.from(
+        new Set(
+          searchParams.assignee
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean),
+        ),
+      )
+    : [];
   const includeClosed = searchParams.includeClosed === "true";
   const page = Math.max(1, Number(searchParams.page ?? "1") || 1);
-  const baseForCounts = buildTicketWhere({
-    assignee,
-    currentUserId: currentUser?.id ?? null,
-    includeClosed,
-    priority,
-    q,
-    status: null,
-    view,
-  });
   const where = buildTicketWhere({
-    assignee,
+    assignees,
     currentUserId: currentUser?.id ?? null,
     includeClosed,
-    priority,
+    priorities,
     q,
-    status,
+    statuses,
     view,
   });
 
@@ -192,10 +252,7 @@ async function getDashboardData(searchParams: TicketSearchParams) {
     tickets,
     totalTickets,
     agents,
-    openCount,
-    pendingCount,
-    waitingCount,
-    resolvedTodayCount,
+    summaryTickets,
   ] = await Promise.all([
     prisma.ticket.findMany({
       orderBy: {
@@ -265,54 +322,85 @@ async function getDashboardData(searchParams: TicketSearchParams) {
         email: true,
       },
     }),
-    prisma.ticket.count({
-      where: {
-        AND: [baseForCounts, { status: TicketStatus.OPEN }],
-      },
-    }),
-    prisma.ticket.count({
-      where: {
-        AND: [baseForCounts, { status: TicketStatus.PENDING }],
-      },
-    }),
-    prisma.ticket.count({
-      where: {
-        AND: [
-          baseForCounts,
-          {
-            status: {
-              in: [
-                TicketStatus.WAITING_ON_CUSTOMER,
-                TicketStatus.WAITING_ON_THIRD_PARTY,
-              ],
+    prisma.ticket.findMany({
+      where,
+      select: {
+        createdAt: true,
+        priority: true,
+        status: true,
+        _count: {
+          select: {
+            messages: {
+              where: {
+                visibility: MessageVisibility.PUBLIC,
+                authorType: MessageAuthorType.AGENT,
+              },
             },
           },
-        ],
-      },
-    }),
-    prisma.ticket.count({
-      where: {
-        AND: [
-          baseForCounts,
-          {
-            status: TicketStatus.RESOLVED,
-            resolvedAt: {
-              gte: startOfToday,
+        },
+        messages: {
+          where: {
+            visibility: MessageVisibility.PUBLIC,
+            authorType: {
+              in: [MessageAuthorType.CUSTOMER, MessageAuthorType.AGENT],
             },
           },
-        ],
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 1,
+          select: {
+            authorType: true,
+            createdAt: true,
+          },
+        },
       },
     }),
   ]);
+  const priorityCounts: Record<TicketPriorityValue, number> = {
+    [TicketPriority.URGENT]: 0,
+    [TicketPriority.HIGH]: 0,
+    [TicketPriority.NORMAL]: 0,
+    [TicketPriority.LOW]: 0,
+  };
+  let needsResponseCount = 0;
+  let oldestWaitingSince: Date | null = null;
+
+  summaryTickets.forEach((ticket) => {
+    priorityCounts[ticket.priority] += 1;
+
+    if (!activeAgingStatuses.has(ticket.status)) {
+      return;
+    }
+
+    const latestPublicMessage = ticket.messages[0] ?? null;
+    const hasAgentReply = ticket._count.messages > 0;
+    const waitingSince =
+      latestPublicMessage?.authorType === MessageAuthorType.CUSTOMER
+        ? latestPublicMessage.createdAt
+        : !hasAgentReply
+          ? latestPublicMessage?.createdAt ?? ticket.createdAt
+          : null;
+
+    if (!waitingSince) {
+      return;
+    }
+
+    needsResponseCount += 1;
+
+    if (!oldestWaitingSince || waitingSince < oldestWaitingSince) {
+      oldestWaitingSince = waitingSince;
+    }
+  });
 
   return {
     active: {
-      assignee,
+      assignees,
       includeClosed,
       page,
-      priority,
+      priorities,
       q,
-      status,
+      statuses,
       view,
     },
     agents,
@@ -321,12 +409,14 @@ async function getDashboardData(searchParams: TicketSearchParams) {
       currentUser?.role === UserRole.SUPER_ADMIN ||
       currentUser?.role === UserRole.MANAGER ||
       currentUser?.role === UserRole.AGENT,
-    summary: [
-      ["Open", openCount, Inbox],
-      ["Waiting on other", pendingCount, Clock3],
-      ["Waiting", waitingCount, UserRound],
-      ["Resolved today", resolvedTodayCount, CheckCircle2],
-    ] as const,
+    summary: {
+      needsResponseCount,
+      oldestWaitingLabel: oldestWaitingSince
+        ? formatAge(oldestWaitingSince)
+        : "None",
+      priorityBreakdown: getPriorityBreakdownLabel(priorityCounts),
+      totalTickets,
+    },
     tickets,
     pagination: {
       currentPage: page,
@@ -338,12 +428,12 @@ async function getDashboardData(searchParams: TicketSearchParams) {
 }
 
 function getPageHeading(active: {
-  assignee: string | null;
+  assignees: string[];
   includeClosed: boolean;
   page: number;
-  priority: TicketPriorityValue | null;
+  priorities: TicketPriorityValue[];
   q: string | null;
-  status: TicketStatusValue | null;
+  statuses: TicketStatusValue[];
   view: string | null;
 }) {
   if (active.q) {
@@ -366,11 +456,11 @@ function getPageHeading(active: {
     return {
       badge: "Queue",
       title: "Unassigned tickets",
-      description: "Tickets that need an owner.",
+      description: "Tickets that need an assignee.",
     };
   }
 
-  if (active.priority === TicketPriority.URGENT) {
+  if (active.priorities.length === 1 && active.priorities[0] === TicketPriority.URGENT) {
     return {
       badge: "Priority queue",
       title: "Urgent tickets",
@@ -378,27 +468,43 @@ function getPageHeading(active: {
     };
   }
 
-  if (active.status) {
+  if (active.statuses.length === 1) {
     return {
       badge: "Status queue",
-      title: `${statusLabels[active.status]} tickets`,
+      title: `${statusLabels[active.statuses[0]]} tickets`,
       description: "Tickets filtered by their current workflow status.",
     };
   }
 
-  if (active.priority) {
+  if (active.statuses.length > 1) {
+    return {
+      badge: "Status queue",
+      title: "Filtered tickets",
+      description: "Tickets filtered by multiple workflow statuses.",
+    };
+  }
+
+  if (active.priorities.length === 1) {
     return {
       badge: "Priority queue",
-      title: `${priorityLabels[active.priority]} priority tickets`,
+      title: `${priorityLabels[active.priorities[0]]} priority tickets`,
       description: "Tickets filtered by priority.",
     };
   }
 
-  if (active.assignee) {
+  if (active.priorities.length > 1) {
+    return {
+      badge: "Priority queue",
+      title: "Filtered tickets",
+      description: "Tickets filtered by multiple priorities.",
+    };
+  }
+
+  if (active.assignees.length > 0) {
     return {
       badge: "Assigned queue",
-      title: "Assigned tickets",
-      description: "Tickets filtered by the selected owner.",
+      title: "Filtered tickets",
+      description: "Tickets filtered by selected assignees.",
     };
   }
 
@@ -424,9 +530,9 @@ export default async function TicketsPage({
       : "all";
   const hasFilters = Boolean(
     dashboard.active.q ||
-      dashboard.active.status ||
-      dashboard.active.priority ||
-      dashboard.active.assignee ||
+      dashboard.active.statuses.length > 0 ||
+      dashboard.active.priorities.length > 0 ||
+      dashboard.active.assignees.length > 0 ||
       dashboard.active.view ||
       dashboard.active.includeClosed,
   );
@@ -448,6 +554,7 @@ export default async function TicketsPage({
   const nextPageHref = buildHref(params, {
     page: String(dashboard.pagination.currentPage + 1),
   });
+  const hasAgingConcern = dashboard.summary.needsResponseCount > 0;
 
   return (
     <>
@@ -471,27 +578,54 @@ export default async function TicketsPage({
         </div>
       </div>
 
-      <div className="grid min-w-0 gap-3 md:grid-cols-4">
-        {dashboard.summary.map(([label, value, Icon]) => (
-          <Card
-            key={label}
-            className="min-w-0 rounded-lg border-zinc-200 bg-white shadow-sm"
-          >
-            <CardHeader className="pb-0">
-              <CardTitle className="flex items-center justify-between text-sm">
-                {label}
-                <span className="flex size-8 items-center justify-center rounded-lg bg-zinc-50 text-cyan-700 ring-1 ring-zinc-200">
-                  <Icon className="size-4" />
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold text-zinc-950">
-                {value}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
+        <div className="grid min-w-0 gap-0 sm:grid-cols-2 lg:grid-cols-[0.8fr_0.9fr_0.8fr_1.5fr]">
+          <div className="min-w-0 border-b border-zinc-200 px-3 py-2.5 sm:border-r lg:border-b-0">
+            <div className="text-xs font-medium text-muted-foreground">
+              Tickets in view
+            </div>
+            <div className="mt-1 text-lg font-semibold text-zinc-950">
+              {dashboard.summary.totalTickets}
+            </div>
+          </div>
+          <div className="min-w-0 border-b border-zinc-200 px-3 py-2.5 lg:border-b-0 lg:border-r">
+            <div className="text-xs font-medium text-muted-foreground">
+              Needs response
+            </div>
+            <div className="mt-1 flex min-w-0 items-center gap-2">
+              <span className="text-lg font-semibold text-zinc-950">
+                {dashboard.summary.needsResponseCount}
+              </span>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-xs",
+                  hasAgingConcern
+                    ? "border-amber-200 bg-amber-50 text-amber-800"
+                    : "border-zinc-200 bg-zinc-50 text-zinc-700",
+                )}
+              >
+                {hasAgingConcern ? "Action needed" : "Clear"}
+              </Badge>
+            </div>
+          </div>
+          <div className="min-w-0 border-b border-zinc-200 px-3 py-2.5 sm:border-r sm:border-b-0">
+            <div className="text-xs font-medium text-muted-foreground">
+              Oldest waiting
+            </div>
+            <div className="mt-1 text-lg font-semibold text-zinc-950">
+              {dashboard.summary.oldestWaitingLabel}
+            </div>
+          </div>
+          <div className="min-w-0 px-3 py-2.5">
+            <div className="text-xs font-medium text-muted-foreground">
+              By priority
+            </div>
+            <div className="mt-1 break-words text-sm font-medium text-zinc-950 [overflow-wrap:anywhere]">
+              {dashboard.summary.priorityBreakdown}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
@@ -544,7 +678,11 @@ export default async function TicketsPage({
         </div>
         <Separator />
         <TicketBulkTable
-          activeStatus={dashboard.active.status}
+          activeStatus={
+            dashboard.active.statuses.length === 1
+              ? dashboard.active.statuses[0]
+              : null
+          }
           canBulkDelete={dashboard.canBulkDelete}
           canBulkUpdateStatus={dashboard.canBulkUpdateStatus}
           hasFilters={hasFilters}
