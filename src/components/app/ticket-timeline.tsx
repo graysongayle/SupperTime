@@ -4,9 +4,11 @@ import { useMemo, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
+  Download,
   Eye,
   MessageSquareText,
   MoreHorizontal,
+  Paperclip,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +43,7 @@ import { cn } from "@/lib/utils";
 
 type TimelineMessage = {
   id: string;
+  attachments: TimelineAttachment[];
   authorType: MessageAuthorType;
   visibility: MessageVisibility;
   body: string;
@@ -49,9 +52,15 @@ type TimelineMessage = {
   emailFrom: string | null;
   emailTo: string | null;
   createdAt: string;
-  attachmentCount: number;
   agent: { name: string | null; email: string } | null;
   customer: { name: string | null; email: string } | null;
+};
+
+type TimelineAttachment = {
+  id: string;
+  contentType: string;
+  fileName: string;
+  sizeBytes: number;
 };
 
 type TicketTimelineProps = {
@@ -117,6 +126,18 @@ function getCollapsedPreview(body: string) {
 
 function normalizeMessageBody(body: string | null | undefined) {
   return (body ?? "").replace(/\r\n/g, "\n").trim();
+}
+
+function formatBytes(sizeBytes: number) {
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
+  }
+
+  if (sizeBytes < 1024 * 1024) {
+    return `${(sizeBytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function getMessageAccentClass(message: TimelineMessage) {
@@ -220,6 +241,45 @@ function MessageRecipients({
           </span>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function MessageAttachments({
+  attachments,
+}: {
+  attachments: TimelineAttachment[];
+}) {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      {attachments.map((attachment) => (
+        <Button
+          key={attachment.id}
+          variant="outline"
+          size="sm"
+          className="h-auto justify-start bg-white px-3 py-2"
+          asChild
+        >
+          <a
+            href={`/api/attachments/${attachment.id}/download`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Paperclip className="size-4 shrink-0" />
+            <span className="min-w-0 flex-1 text-left">
+              <span className="block truncate">{attachment.fileName}</span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {attachment.contentType} · {formatBytes(attachment.sizeBytes)}
+              </span>
+            </span>
+            <Download className="size-4 shrink-0" />
+          </a>
+        </Button>
+      ))}
     </div>
   );
 }
@@ -530,12 +590,7 @@ export function TicketTimeline({
                   <p className="mt-3 whitespace-pre-wrap break-words text-sm text-zinc-700 [overflow-wrap:anywhere]">
                     {message.body}
                   </p>
-                  {message.attachmentCount > 0 ? (
-                    <div className="mt-3 text-xs text-muted-foreground">
-                      {message.attachmentCount} attachment
-                      {message.attachmentCount === 1 ? "" : "s"}
-                    </div>
-                  ) : null}
+                  <MessageAttachments attachments={message.attachments} />
                 </div>
               )}
             </div>

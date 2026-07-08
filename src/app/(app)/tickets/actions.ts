@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -16,6 +17,12 @@ import {
 } from "@/generated/prisma/enums";
 import { getCurrentAppUser } from "@/lib/current-app-user";
 import { prisma } from "@/lib/prisma";
+import {
+  deleteStoredAttachments,
+  formDataFilesToPendingAttachments,
+  pendingAttachmentsToPostmarkAttachments,
+  uploadTicketAttachments,
+} from "@/lib/attachments";
 import {
   buildTicketUrl,
   buildCustomerConfirmationText,
@@ -103,6 +110,21 @@ function formatNullableUser(user: { email: string; name: string | null } | null)
   }
 
   return user.name ? `${user.name} <${user.email}>` : user.email;
+}
+
+async function cleanupStoredAttachmentKeys(storageKeys: string[]) {
+  if (storageKeys.length === 0) {
+    return;
+  }
+
+  try {
+    await deleteStoredAttachments(storageKeys);
+  } catch (error) {
+    console.warn("[attachments] failed to delete stored objects", {
+      error: error instanceof Error ? error.message : String(error),
+      storageKeys,
+    });
+  }
 }
 
 export async function createTicket(formData: FormData) {
@@ -289,7 +311,20 @@ export async function addPublicReply(formData: FormData) {
   const subject = ticket.subject.startsWith("Re:")
     ? ticket.subject
     : `Re: ${ticket.subject}`;
+  const attachments = await formDataFilesToPendingAttachments(
+    formData.getAll("attachments"),
+  );
+  const messageId = randomUUID();
+  const storedAttachments =
+    attachments.length > 0
+      ? await uploadTicketAttachments({
+          attachments,
+          messageId,
+          ticketId: ticket.id,
+        })
+      : [];
   const result = await sendSupportEmail({
+    attachments: pendingAttachmentsToPostmarkAttachments(attachments),
     cc: ccRecipients,
     headers: [
       {
@@ -309,9 +344,17 @@ export async function addPublicReply(formData: FormData) {
     subject,
     textBody: body,
     to: ticket.customer.email,
+  }).catch(async (error) => {
+    await deleteStoredAttachments(
+      storedAttachments.map((attachment) => attachment.storageKey),
+    ).catch(() => undefined);
+    throw error;
   });
 
   if (result.skipped) {
+    await deleteStoredAttachments(
+      storedAttachments.map((attachment) => attachment.storageKey),
+    ).catch(() => undefined);
     await recordSystemNote(
       ticket.id,
       `Outbound reply was not sent: ${result.reason}`,
@@ -357,6 +400,7 @@ export async function addPublicReply(formData: FormData) {
 
     await tx.ticketMessage.create({
       data: {
+        id: messageId,
         ticketId: ticket.id,
         body,
         authorType: MessageAuthorType.AGENT,
@@ -368,6 +412,16 @@ export async function addPublicReply(formData: FormData) {
         emailCc: ccRecipients,
       },
     });
+
+    if (storedAttachments.length > 0) {
+      await tx.attachment.createMany({
+        data: storedAttachments.map((attachment) => ({
+          ...attachment,
+          messageId,
+          ticketId: ticket.id,
+        })),
+      });
+    }
 
     await tx.ticket.update({
       where: {
@@ -931,6 +985,11 @@ export async function deleteClosedTicket(formData: FormData) {
       id: ticketId,
     },
     select: {
+      attachments: {
+        select: {
+          storageKey: true,
+        },
+      },
       id: true,
       number: true,
       status: true,
@@ -950,6 +1009,9 @@ export async function deleteClosedTicket(formData: FormData) {
       id: ticket.id,
     },
   });
+  await cleanupStoredAttachmentKeys(
+    ticket.attachments.map((attachment) => attachment.storageKey),
+  );
 
   console.info("[ticket-delete] permanently deleted closed ticket", {
     actorId: actor.id,
@@ -984,6 +1046,11 @@ export async function bulkDeleteClosedTickets(formData: FormData) {
       },
     },
     select: {
+      attachments: {
+        select: {
+          storageKey: true,
+        },
+      },
       id: true,
       number: true,
       status: true,
@@ -1002,6 +1069,11 @@ export async function bulkDeleteClosedTickets(formData: FormData) {
         },
       },
     });
+    await cleanupStoredAttachmentKeys(
+      closedTickets.flatMap((ticket) =>
+        ticket.attachments.map((attachment) => attachment.storageKey),
+      ),
+    );
   }
 
   console.info("[ticket-delete] bulk deleted closed tickets", {

@@ -17,6 +17,8 @@
     "freshdesk:import": "node scripts/freshdesk-import.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.955.0",
+    "@aws-sdk/s3-request-presigner": "^3.955.0",
     "@clerk/nextjs": "^7.4.3",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",

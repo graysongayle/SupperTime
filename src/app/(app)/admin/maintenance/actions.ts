@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { deleteStoredAttachments } from "@/lib/attachments";
 import { requireSuperAdmin } from "@/lib/current-app-user";
 import { prisma } from "@/lib/prisma";
 
@@ -17,6 +18,21 @@ function requiredString(formData: FormData, key: string) {
 
 function isDangerousResetEnabled() {
   return process.env.ENABLE_DANGEROUS_ADMIN_RESET === "true";
+}
+
+async function cleanupStoredAttachmentKeys(storageKeys: string[]) {
+  if (storageKeys.length === 0) {
+    return;
+  }
+
+  try {
+    await deleteStoredAttachments(storageKeys);
+  } catch (error) {
+    console.warn("[admin-maintenance] failed to delete stored attachments", {
+      error: error instanceof Error ? error.message : String(error),
+      storageKeys,
+    });
+  }
 }
 
 export async function deleteFreshdeskImportTickets(formData: FormData) {
@@ -51,11 +67,24 @@ export async function deleteFreshdeskImportTickets(formData: FormData) {
     throw new Error(`Type ${expectedConfirmation} to delete this import run.`);
   }
 
+  const attachments = await prisma.attachment.findMany({
+    where: {
+      ticket: {
+        freshdeskImportId: importRun.id,
+      },
+    },
+    select: {
+      storageKey: true,
+    },
+  });
   const deleted = await prisma.ticket.deleteMany({
     where: {
       freshdeskImportId: importRun.id,
     },
   });
+  await cleanupStoredAttachmentKeys(
+    attachments.map((attachment) => attachment.storageKey),
+  );
 
   await prisma.freshdeskImport.update({
     where: {
@@ -106,8 +135,16 @@ export async function deleteAllTicketsForDevelopment(formData: FormData) {
     throw new Error("Type DELETE ALL TICKETS to run this reset.");
   }
 
+  const attachments = await prisma.attachment.findMany({
+    select: {
+      storageKey: true,
+    },
+  });
   const deletedTickets = await prisma.ticket.deleteMany();
   const deletedImports = await prisma.freshdeskImport.deleteMany();
+  await cleanupStoredAttachmentKeys(
+    attachments.map((attachment) => attachment.storageKey),
+  );
 
   console.warn("[admin-maintenance] deleted all tickets", {
     actorId: actor.id,

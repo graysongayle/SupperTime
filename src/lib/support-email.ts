@@ -5,6 +5,12 @@ type PostmarkHeader = {
   Value: string;
 };
 
+type PostmarkAttachment = {
+  Content: string;
+  ContentType: string;
+  Name: string;
+};
+
 const automatedReplyHeaders: PostmarkHeader[] = [
   {
     Name: "Auto-Submitted",
@@ -17,6 +23,7 @@ const automatedReplyHeaders: PostmarkHeader[] = [
 ];
 
 type SendSupportEmailInput = {
+  attachments?: PostmarkAttachment[];
   cc?: string | null;
   htmlBody?: string | null;
   messageStream?: string | null;
@@ -170,6 +177,7 @@ export function textToHtml(text: string) {
 }
 
 export async function sendSupportEmail({
+  attachments,
   cc,
   headers,
   htmlBody,
@@ -201,6 +209,7 @@ export async function sendSupportEmail({
     },
     body: JSON.stringify({
       From: getSupportSender().formatted,
+      Attachments: attachments && attachments.length > 0 ? attachments : undefined,
       Cc: cc || undefined,
       Headers: headers,
       HtmlBody: htmlBody ?? textToHtml(textBody),

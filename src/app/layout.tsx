@@ -12,6 +12,10 @@ const jetBrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Suppertime Helpdesk",
   description: "Internal support desk for email and embedded-form tickets.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+  },
 };
 
 const hasClerkPublishableKey = Boolean(

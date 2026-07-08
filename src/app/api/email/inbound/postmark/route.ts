@@ -22,6 +22,11 @@ import {
   TicketStatus,
 } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
+import {
+  assertAttachmentBatchLimits,
+  type PendingAttachment,
+  uploadTicketAttachments,
+} from "@/lib/attachments";
 
 export const dynamic = "force-dynamic";
 const logPrefix = "[postmark-inbound]";
@@ -37,6 +42,7 @@ type PostmarkInboundHeader = {
 };
 
 type PostmarkInboundAttachment = {
+  Content?: string;
   ContentLength?: number;
   ContentType?: string;
   Name?: string;
@@ -286,7 +292,7 @@ async function appendInboundMessage({
   payload: PostmarkInboundPayload;
   ticketId: string;
 }) {
-  await prisma.$transaction(async (tx) => {
+  const messageId = await prisma.$transaction(async (tx) => {
     const customer = await tx.customer.upsert({
       where: {
         email: customerEmail.toLowerCase(),
@@ -300,7 +306,7 @@ async function appendInboundMessage({
       },
     });
 
-    await tx.ticketMessage.create({
+    const message = await tx.ticketMessage.create({
       data: {
         ticketId,
         body,
@@ -316,9 +322,11 @@ async function appendInboundMessage({
         emailCc: formatAddresses(payload.CcFull),
         customerId: customer.id,
       },
+      select: {
+        id: true,
+      },
     });
 
-    await maybeRecordAttachmentNote(tx, ticketId, payload);
     await upsertParticipantsFromInbound(tx, ticketId, payload, {
       email: customerEmail,
       name: customerName,
@@ -332,6 +340,14 @@ async function appendInboundMessage({
         updatedAt: new Date(),
       },
     });
+
+    return message.id;
+  });
+
+  await storeInboundAttachments({
+    messageId,
+    payload,
+    ticketId,
   });
 }
 
@@ -353,7 +369,7 @@ async function createInboundTicket({
   const emailReplyToken = createEmailReplyToken();
   const subject = payload.Subject?.trim() || "Support request";
 
-  return prisma.$transaction(async (tx) => {
+  const ticket = await prisma.$transaction(async (tx) => {
     const customer = await tx.customer.upsert({
       where: {
         email: customerEmail.toLowerCase(),
@@ -376,22 +392,6 @@ async function createInboundTicket({
         emailThreadId: inboundMessageId,
         emailReplyToken,
         customerId: customer.id,
-        messages: {
-          create: {
-            body,
-            bodyHtml: htmlBody,
-            authorType: MessageAuthorType.CUSTOMER,
-            visibility: MessageVisibility.PUBLIC,
-            emailMessageId: inboundMessageId,
-            emailFrom: formatAddress({
-              Email: customerEmail,
-              Name: customerName ?? undefined,
-            }),
-            emailTo: formatAddresses(payload.ToFull),
-            emailCc: formatAddresses(payload.CcFull),
-            customerId: customer.id,
-          },
-        },
         statusHistory: {
           create: {
             to: TicketStatus.OPEN,
@@ -412,21 +412,49 @@ async function createInboundTicket({
       },
     });
 
+    const message = await tx.ticketMessage.create({
+      data: {
+        ticketId: ticket.id,
+        body,
+        bodyHtml: htmlBody,
+        authorType: MessageAuthorType.CUSTOMER,
+        visibility: MessageVisibility.PUBLIC,
+        emailMessageId: inboundMessageId,
+        emailFrom: formatAddress({
+          Email: customerEmail,
+          Name: customerName ?? undefined,
+        }),
+        emailTo: formatAddresses(payload.ToFull),
+        emailCc: formatAddresses(payload.CcFull),
+        customerId: customer.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
     await upsertParticipantsFromInbound(tx, ticket.id, payload, {
       email: customerEmail,
       name: customerName,
     });
 
-    await maybeRecordAttachmentNote(tx, ticket.id, payload);
-
     return {
       customerEmail: ticket.customer.email,
       emailReplyToken: ticket.emailReplyToken ?? emailReplyToken,
       id: ticket.id,
+      messageId: message.id,
       number: ticket.number,
       subject: ticket.subject,
     };
   });
+
+  await storeInboundAttachments({
+    messageId: ticket.messageId,
+    payload,
+    ticketId: ticket.id,
+  });
+
+  return ticket;
 }
 
 async function sendInboundConfirmation(
@@ -498,28 +526,88 @@ async function sendInboundConfirmation(
   }
 }
 
-async function maybeRecordAttachmentNote(
-  tx: Prisma.TransactionClient,
-  ticketId: string,
-  payload: PostmarkInboundPayload,
-) {
+async function storeInboundAttachments({
+  messageId,
+  payload,
+  ticketId,
+}: {
+  messageId: string;
+  ticketId: string;
+  payload: PostmarkInboundPayload;
+}) {
   const attachments = payload.Attachments ?? [];
 
   if (attachments.length === 0) {
     return;
   }
 
-  const names = attachments
-    .map((attachment) => attachment.Name)
-    .filter(Boolean)
-    .join(", ");
+  const pendingAttachments: PendingAttachment[] = [];
+  const missingContentNames: string[] = [];
 
-  await tx.ticketMessage.create({
+  for (const attachment of attachments) {
+    const fileName = attachment.Name?.trim() || "attachment";
+    const contentType = attachment.ContentType?.trim() || "application/octet-stream";
+
+    if (!attachment.Content) {
+      missingContentNames.push(fileName);
+      continue;
+    }
+
+    const buffer = Buffer.from(attachment.Content, "base64");
+
+    pendingAttachments.push({
+      buffer,
+      contentType,
+      fileName,
+      sizeBytes: buffer.byteLength,
+    });
+  }
+
+  if (missingContentNames.length > 0) {
+    await recordAttachmentStorageNote(
+      ticketId,
+      `Inbound email included attachment metadata without file content: ${missingContentNames.join(
+        ", ",
+      )}.`,
+    );
+  }
+
+  if (pendingAttachments.length === 0) {
+    return;
+  }
+
+  try {
+    assertAttachmentBatchLimits(pendingAttachments);
+    const storedAttachments = await uploadTicketAttachments({
+      attachments: pendingAttachments,
+      messageId,
+      ticketId,
+    });
+
+    await prisma.attachment.createMany({
+      data: storedAttachments.map((attachment) => ({
+        ...attachment,
+        messageId,
+        ticketId,
+      })),
+    });
+  } catch (error) {
+    await recordAttachmentStorageNote(
+      ticketId,
+      `Inbound email included ${attachments.length} attachment${
+        attachments.length === 1 ? "" : "s"
+      }, but attachment storage failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`,
+    );
+  }
+}
+
+async function recordAttachmentStorageNote(ticketId: string, body: string) {
+  await prisma.ticketMessage.create({
     data: {
       ticketId,
-      body: `Inbound email included ${attachments.length} attachment${
-        attachments.length === 1 ? "" : "s"
-      }${names ? `: ${names}` : ""}. Attachment file storage is not configured yet.`,
+      body,
       authorType: MessageAuthorType.SYSTEM,
       visibility: MessageVisibility.INTERNAL,
     },

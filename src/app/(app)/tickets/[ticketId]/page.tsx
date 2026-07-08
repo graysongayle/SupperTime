@@ -38,6 +38,10 @@ import {
   UserRole,
 } from "@/generated/prisma/enums";
 import { getCurrentAppUser } from "@/lib/current-app-user";
+import {
+  formatAttachmentLimit,
+  maxAttachmentCount,
+} from "@/lib/attachment-limits";
 import { prisma } from "@/lib/prisma";
 import { isSupportEmailAddress } from "@/lib/support-email";
 
@@ -248,7 +252,12 @@ export default async function TicketDetailPage({
             messages={ticket.messages.map((message) => ({
               id: message.id,
               agent: message.agent,
-              attachmentCount: message.attachments.length,
+              attachments: message.attachments.map((attachment) => ({
+                id: attachment.id,
+                contentType: attachment.contentType,
+                fileName: attachment.fileName,
+                sizeBytes: attachment.sizeBytes,
+              })),
               authorType: message.authorType,
               body: message.body,
               bodyHtml: message.bodyHtml,
@@ -272,7 +281,11 @@ export default async function TicketDetailPage({
               <CardTitle className="text-base">Reply by email</CardTitle>
             </CardHeader>
             <CardContent>
-              <form action={addPublicReply} className="space-y-3">
+              <form
+                action={addPublicReply}
+                className="space-y-3"
+                encType="multipart/form-data"
+              >
                 <input type="hidden" name="ticketId" value={ticket.id} />
                 <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm">
                   <div className="font-medium text-cyan-950">
@@ -289,6 +302,25 @@ export default async function TicketDetailPage({
                   rows={6}
                   placeholder="Write a customer-facing reply."
                 />
+                <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+                  <label
+                    htmlFor="replyAttachments"
+                    className="text-sm font-medium text-zinc-950"
+                  >
+                    Attach files
+                  </label>
+                  <input
+                    id="replyAttachments"
+                    name="attachments"
+                    type="file"
+                    multiple
+                    className="mt-2 block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-zinc-900"
+                  />
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Attachments are capped at {maxAttachmentCount} files and{" "}
+                    {formatAttachmentLimit()} total per reply.
+                  </p>
+                </div>
                 <div className="space-y-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
                   <div>
                     <div className="text-sm font-medium text-zinc-950">
