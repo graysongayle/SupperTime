@@ -149,6 +149,7 @@ export async function POST(request: NextRequest) {
         htmlBody: payload.HtmlBody ?? null,
         inboundMessageId,
         payload,
+        reopenOnCustomerReply: !automatedReason,
         ticketId: matchedTicket.id,
       });
 
@@ -282,6 +283,7 @@ async function appendInboundMessage({
   htmlBody,
   inboundMessageId,
   payload,
+  reopenOnCustomerReply,
   ticketId,
 }: {
   body: string;
@@ -290,9 +292,23 @@ async function appendInboundMessage({
   htmlBody: string | null;
   inboundMessageId: string | null;
   payload: PostmarkInboundPayload;
+  reopenOnCustomerReply: boolean;
   ticketId: string;
 }) {
   const messageId = await prisma.$transaction(async (tx) => {
+    const ticket = await tx.ticket.findUnique({
+      where: {
+        id: ticketId,
+      },
+      select: {
+        status: true,
+      },
+    });
+
+    if (!ticket) {
+      throw new Error("Ticket not found.");
+    }
+
     const customer = await tx.customer.upsert({
       where: {
         email: customerEmail.toLowerCase(),
@@ -327,6 +343,11 @@ async function appendInboundMessage({
       },
     });
 
+    const shouldReopen =
+      reopenOnCustomerReply &&
+      (ticket.status === TicketStatus.RESOLVED ||
+        ticket.status === TicketStatus.CLOSED);
+
     await upsertParticipantsFromInbound(tx, ticketId, payload, {
       email: customerEmail,
       name: customerName,
@@ -337,9 +358,35 @@ async function appendInboundMessage({
         id: ticketId,
       },
       data: {
+        closedAt: shouldReopen ? null : undefined,
+        resolvedAt: shouldReopen ? null : undefined,
+        status: shouldReopen ? TicketStatus.OPEN : undefined,
         updatedAt: new Date(),
       },
     });
+
+    if (shouldReopen) {
+      await tx.ticketStatusHistory.create({
+        data: {
+          from: ticket.status,
+          note: "Ticket reopened automatically because the customer replied.",
+          ticketId,
+          to: TicketStatus.OPEN,
+        },
+      });
+
+      await tx.ticketMessage.create({
+        data: {
+          ticketId,
+          authorType: MessageAuthorType.SYSTEM,
+          body: `Ticket reopened automatically because ${formatAddress({
+            Email: customerEmail,
+            Name: customerName ?? undefined,
+          })} replied to a ${ticket.status.toLowerCase()} ticket.`,
+          visibility: MessageVisibility.INTERNAL,
+        },
+      });
+    }
 
     return message.id;
   });

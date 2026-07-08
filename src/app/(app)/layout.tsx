@@ -170,7 +170,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             userName={viewer.name}
           />
           <SidebarInset className="min-h-screen bg-[#f6f7f9]">
-            <AppHeader initials={initials} roleLabel={roleLabel} viewer={viewer} />
+            <AppHeader />
 
             <AppContentShell>{children}</AppContentShell>
           </SidebarInset>

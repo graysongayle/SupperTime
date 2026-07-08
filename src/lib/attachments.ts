@@ -186,19 +186,23 @@ export async function deleteStoredAttachments(storageKeys: string[]) {
 
 export async function getAttachmentDownloadUrl({
   contentType,
+  disposition = "attachment",
   fileName,
   storageKey,
 }: {
   contentType: string;
+  disposition?: "attachment" | "inline";
   fileName: string;
   storageKey: string;
 }) {
+  const safeFileName = sanitizeFileName(fileName).replace(/"/g, "");
+
   return getSignedUrl(
     getS3Client(),
     new GetObjectCommand({
       Bucket: getBucketName(),
       Key: storageKey,
-      ResponseContentDisposition: `attachment; filename="${sanitizeFileName(fileName).replace(/"/g, "")}"`,
+      ResponseContentDisposition: `${disposition}; filename="${safeFileName}"`,
       ResponseContentType: contentType,
     }),
     {

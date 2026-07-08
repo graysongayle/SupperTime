@@ -20,6 +20,8 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Prisma } from "@/generated/prisma/client";
 import {
+  MessageAuthorType,
+  MessageVisibility,
   TicketPriority,
   TicketStatus,
   UserRole,
@@ -218,6 +220,28 @@ async function getDashboardData(searchParams: TicketSearchParams) {
         _count: {
           select: {
             attachments: true,
+            messages: {
+              where: {
+                visibility: MessageVisibility.PUBLIC,
+                authorType: MessageAuthorType.AGENT,
+              },
+            },
+          },
+        },
+        messages: {
+          where: {
+            visibility: MessageVisibility.PUBLIC,
+            authorType: {
+              in: [MessageAuthorType.CUSTOMER, MessageAuthorType.AGENT],
+            },
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 10,
+          select: {
+            authorType: true,
+            createdAt: true,
           },
         },
       },

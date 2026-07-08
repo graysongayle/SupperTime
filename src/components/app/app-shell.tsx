@@ -100,11 +100,7 @@ export function AppShell({
         </aside>
 
         <section className="flex min-w-0 flex-col">
-          <AppHeader
-            initials={initials}
-            roleLabel={roleLabel}
-            viewer={viewer}
-          />
+          <AppHeader />
 
           <div className="flex w-full flex-1 flex-col gap-5 p-4 md:p-6">
             {children}

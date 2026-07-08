@@ -12,13 +12,13 @@ import {
 
 import {
   addInternalNote,
-  addPublicReply,
   addTicketTag,
   removeTicketTag,
 } from "@/app/(app)/tickets/actions";
 import { DeleteTicketForm } from "@/components/app/delete-ticket-form";
 import { TicketPropertiesForm } from "@/components/app/ticket-properties-form";
 import { TicketForwardSheet } from "@/components/app/ticket-forward-sheet";
+import { TicketReplyForm } from "@/components/app/ticket-reply-form";
 import { TicketTimeline } from "@/components/app/ticket-timeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  MessageAuthorType,
+  MessageVisibility,
   TicketPriority,
   TicketParticipantRole,
   TicketSource,
@@ -38,12 +40,12 @@ import {
   UserRole,
 } from "@/generated/prisma/enums";
 import { getCurrentAppUser } from "@/lib/current-app-user";
-import {
-  formatAttachmentLimit,
-  maxAttachmentCount,
-} from "@/lib/attachment-limits";
 import { prisma } from "@/lib/prisma";
 import { isSupportEmailAddress } from "@/lib/support-email";
+import {
+  getTicketAgingClass,
+  getTicketAgingState,
+} from "@/lib/ticket-aging";
 
 export const dynamic = "force-dynamic";
 
@@ -210,6 +212,22 @@ export default async function TicketDetailPage({
     : ticket.customer.email;
   const canPermanentlyDelete =
     viewer?.role === UserRole.SUPER_ADMIN && ticket.status === TicketStatus.CLOSED;
+  const publicMessages = ticket.messages.filter(
+    (message) => message.visibility === MessageVisibility.PUBLIC,
+  );
+  const latestCustomerMessage = [...publicMessages]
+    .reverse()
+    .find((message) => message.authorType === MessageAuthorType.CUSTOMER);
+  const latestAgentMessage = [...publicMessages]
+    .reverse()
+    .find((message) => message.authorType === MessageAuthorType.AGENT);
+  const agingState = getTicketAgingState({
+    createdAt: ticket.createdAt,
+    hasAgentReply: Boolean(latestAgentMessage),
+    latestAgentMessageAt: latestAgentMessage?.createdAt ?? null,
+    latestCustomerMessageAt: latestCustomerMessage?.createdAt ?? null,
+    status: ticket.status,
+  });
 
   return (
     <>
@@ -226,6 +244,14 @@ export default async function TicketDetailPage({
               {statusLabels[ticket.status]}
             </Badge>
             <Badge variant="outline">#{ticket.number}</Badge>
+            {agingState ? (
+              <Badge
+                variant="outline"
+                className={getTicketAgingClass(agingState.severity)}
+              >
+                {agingState.label} · {agingState.ageLabel}
+              </Badge>
+            ) : null}
             <span className="text-xs text-muted-foreground">
               {sourceLabels[ticket.source]}
             </span>
@@ -281,113 +307,16 @@ export default async function TicketDetailPage({
               <CardTitle className="text-base">Reply by email</CardTitle>
             </CardHeader>
             <CardContent>
-              <form
-                action={addPublicReply}
-                className="space-y-3"
-                encType="multipart/form-data"
-              >
-                <input type="hidden" name="ticketId" value={ticket.id} />
-                <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm">
-                  <div className="font-medium text-cyan-950">
-                    To: {replyRecipientLabel}
-                  </div>
-                  <div className="mt-1 text-xs text-cyan-900/80">
-                    This reply will be sent to {replyRecipientName}. Add CC
-                    recipients below if other participants should receive it.
-                  </div>
-                </div>
-                <Textarea
-                  name="body"
-                  required
-                  rows={6}
-                  placeholder="Write a customer-facing reply."
-                />
-                <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-                  <label
-                    htmlFor="replyAttachments"
-                    className="text-sm font-medium text-zinc-950"
-                  >
-                    Attach files
-                  </label>
-                  <input
-                    id="replyAttachments"
-                    name="attachments"
-                    type="file"
-                    multiple
-                    className="mt-2 block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-zinc-900"
-                  />
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Attachments are capped at {maxAttachmentCount} files and{" "}
-                    {formatAttachmentLimit()} total per reply.
-                  </p>
-                </div>
-                <div className="space-y-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-                  <div>
-                    <div className="text-sm font-medium text-zinc-950">
-                      CC recipients
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Select existing CC participants or add email addresses for
-                      this reply.
-                    </div>
-                  </div>
-                  {ccParticipants.length > 0 ? (
-                    <div className="space-y-2">
-                      {ccParticipants.map((participant) => (
-                        <label
-                          key={participant.id}
-                          className="flex items-start gap-2 text-sm text-zinc-700"
-                        >
-                          <input
-                            type="checkbox"
-                            name="ccParticipantId"
-                            value={participant.id}
-                            className="mt-1"
-                          />
-                          <span className="min-w-0">
-                            <span className="block font-medium text-zinc-900">
-                              {participant.name ?? participant.email}
-                            </span>
-                            <span className="block break-words text-xs text-muted-foreground">
-                              {participant.email}
-                            </span>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-muted-foreground">
-                      No CC participants are currently listed on this ticket.
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="additionalCc"
-                      className="text-sm font-medium text-zinc-900"
-                    >
-                      Add CC addresses
-                    </label>
-                    <input
-                      id="additionalCc"
-                      name="additionalCc"
-                      type="text"
-                      placeholder="name@example.com, other@example.com"
-                      className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm shadow-xs outline-none focus:border-cyan-600"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Separate multiple addresses with commas, semicolons, or spaces.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex justify-end">
-                  <Button
-                    type="submit"
-                    className="bg-zinc-900 text-white hover:bg-zinc-800"
-                  >
-                    Send reply
-                  </Button>
-                </div>
-              </form>
+              <TicketReplyForm
+                ccParticipants={ccParticipants.map((participant) => ({
+                  email: participant.email,
+                  id: participant.id,
+                  name: participant.name,
+                }))}
+                replyRecipientLabel={replyRecipientLabel}
+                replyRecipientName={replyRecipientName}
+                ticketId={ticket.id}
+              />
             </CardContent>
           </Card>
 

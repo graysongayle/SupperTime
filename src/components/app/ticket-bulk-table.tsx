@@ -30,11 +30,17 @@ import {
 } from "@/components/ui/table";
 import { toast } from "@/hooks/use-toast";
 import {
+  MessageAuthorType,
   TicketPriority,
   TicketStatus,
+  type MessageAuthorType as MessageAuthorTypeValue,
   type TicketPriority as TicketPriorityValue,
   type TicketStatus as TicketStatusValue,
 } from "@/generated/prisma/enums";
+import {
+  getTicketAgingClass,
+  getTicketAgingState,
+} from "@/lib/ticket-aging";
 
 const statusStyles: Record<TicketStatusValue, string> = {
   [TicketStatus.OPEN]: "border-teal-200 bg-teal-50 text-teal-800",
@@ -79,7 +85,12 @@ type TicketBulkTableTicket = {
     email: string;
     name: string | null;
   };
+  createdAt: Date | string;
   id: string;
+  messages: Array<{
+    authorType: MessageAuthorTypeValue;
+    createdAt: Date | string;
+  }>;
   number: number;
   priority: TicketPriorityValue;
   status: TicketStatusValue;
@@ -87,6 +98,7 @@ type TicketBulkTableTicket = {
   updatedAt: Date | string;
   _count: {
     attachments: number;
+    messages: number;
   };
 };
 
@@ -389,6 +401,19 @@ export function TicketBulkTable({
                 ticket.assignedTo?.email ??
                 "Unassigned";
               const customerName = ticket.customer.name ?? ticket.customer.email;
+              const latestCustomerMessage = ticket.messages.find(
+                (message) => message.authorType === MessageAuthorType.CUSTOMER,
+              );
+              const latestAgentMessage = ticket.messages.find(
+                (message) => message.authorType === MessageAuthorType.AGENT,
+              );
+              const agingState = getTicketAgingState({
+                createdAt: ticket.createdAt,
+                hasAgentReply: ticket._count.messages > 0,
+                latestAgentMessageAt: latestAgentMessage?.createdAt ?? null,
+                latestCustomerMessageAt: latestCustomerMessage?.createdAt ?? null,
+                status: ticket.status,
+              });
 
               return (
                 <TableRow key={ticket.id} className="hover:bg-zinc-50/80">
@@ -464,7 +489,17 @@ export function TicketBulkTable({
                     {assigneeName}
                   </TableCell>
                   <TableCell className="w-[150px] whitespace-nowrap text-right text-muted-foreground">
-                    {formatRelativeTime(ticket.updatedAt)}
+                    <div>{formatRelativeTime(ticket.updatedAt)}</div>
+                    {agingState ? (
+                      <div className="mt-1 flex justify-end">
+                        <Badge
+                          variant="outline"
+                          className={getTicketAgingClass(agingState.severity)}
+                        >
+                          {agingState.label} · {agingState.ageLabel}
+                        </Badge>
+                      </div>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               );

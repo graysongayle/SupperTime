@@ -2,19 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, MailPlus, Search } from "lucide-react";
-import { UserButton } from "@clerk/nextjs";
+import { MailPlus, Search } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Breadcrumb,
@@ -26,18 +16,6 @@ import {
 } from "@/components/ui/breadcrumb";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useHelpCenterSelection } from "@/components/app/help-center-selection";
-
-type AppHeaderProps = {
-  viewer: {
-    appRole: string | null;
-    clerkId: string | null;
-    email: string;
-    isActive: boolean | null;
-    name: string;
-  };
-  roleLabel: string;
-  initials: string;
-};
 
 const routeTitles = [
   {
@@ -81,7 +59,7 @@ function getRouteTitle(pathname: string) {
   );
 }
 
-export function AppHeader({ initials, roleLabel, viewer }: AppHeaderProps) {
+export function AppHeader() {
   const pathname = usePathname();
   const isTicketList = pathname === "/tickets";
   const isNewTicket = pathname === "/tickets/new";
@@ -137,9 +115,6 @@ export function AppHeader({ initials, roleLabel, viewer }: AppHeaderProps) {
         </div>
       )}
 
-      <Button variant="outline" size="icon" aria-label="Notifications">
-        <Bell className="size-4" />
-      </Button>
       {!isNewTicket ? (
         <Button asChild className="bg-zinc-900 text-white hover:bg-zinc-800">
           <Link href="/tickets/new">
@@ -148,49 +123,6 @@ export function AppHeader({ initials, roleLabel, viewer }: AppHeaderProps) {
           </Link>
         </Button>
       ) : null}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Open profile menu"
-            className="rounded-full"
-          >
-            <span className="text-xs font-semibold">{initials}</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-72">
-          <DropdownMenuLabel>Profile</DropdownMenuLabel>
-          <div className="px-1.5 py-2">
-            <div className="font-medium leading-tight">{viewer.name}</div>
-            <div className="mt-1 truncate text-xs text-muted-foreground">
-              {viewer.email}
-            </div>
-          </div>
-          <DropdownMenuSeparator />
-          <div className="space-y-2 px-1.5 py-2 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">App role</span>
-              <Badge variant="outline">{roleLabel}</Badge>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Status</span>
-              <span>{viewer.isActive ? "Active" : "Inactive"}</span>
-            </div>
-          </div>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem className="flex-col items-start gap-1">
-            <span className="text-xs text-muted-foreground">Clerk user ID</span>
-            <span className="max-w-full truncate font-mono text-xs">
-              {viewer.clerkId ?? "Not available"}
-            </span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <div className="px-1.5 py-2">
-            <UserButton />
-          </div>
-        </DropdownMenuContent>
-      </DropdownMenu>
     </header>
   );
 }

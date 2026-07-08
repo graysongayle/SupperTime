@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import {
   ChevronDown,
@@ -140,6 +141,10 @@ function formatBytes(sizeBytes: number) {
   return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function isInlineImageAttachment(attachment: TimelineAttachment) {
+  return attachment.contentType.toLowerCase().startsWith("image/");
+}
+
 function getMessageAccentClass(message: TimelineMessage) {
   if (message.visibility === MessageVisibility.INTERNAL) {
     return "bg-amber-500";
@@ -254,9 +259,45 @@ function MessageAttachments({
     return null;
   }
 
+  const imageAttachments = attachments.filter(isInlineImageAttachment);
+  const fileAttachments = attachments.filter(
+    (attachment) => !isInlineImageAttachment(attachment),
+  );
+
   return (
-    <div className="mt-3 flex flex-col gap-2">
-      {attachments.map((attachment) => (
+    <div className="mt-3 flex flex-col gap-3">
+      {imageAttachments.length > 0 ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {imageAttachments.map((attachment) => (
+            <a
+              key={attachment.id}
+              href={`/api/attachments/${attachment.id}/download`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white"
+            >
+              <Image
+                src={`/api/attachments/${attachment.id}/view`}
+                alt={attachment.fileName}
+                className="max-h-80 w-full object-contain"
+                width={960}
+                height={640}
+                loading="lazy"
+                unoptimized
+              />
+              <span className="flex min-w-0 items-center gap-2 border-t border-zinc-200 px-3 py-2 text-xs text-muted-foreground">
+                <Paperclip className="size-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">
+                  {attachment.fileName}
+                </span>
+                <span className="shrink-0">{formatBytes(attachment.sizeBytes)}</span>
+              </span>
+            </a>
+          ))}
+        </div>
+      ) : null}
+
+      {fileAttachments.map((attachment) => (
         <Button
           key={attachment.id}
           variant="outline"
