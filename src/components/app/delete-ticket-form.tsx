@@ -102,8 +102,8 @@ export function DeleteTicketForm({
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-950">
-            Only closed tickets can be deleted, and this operation is restricted
-            to super-admins.
+            Only closed tickets can be deleted. Type DELETE and confirm before
+            the ticket is permanently removed.
           </div>
           <DialogFooter>
             <DialogClose asChild>

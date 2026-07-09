@@ -214,7 +214,10 @@ export default async function TicketDetailPage({
     ? `${ticket.customer.name} <${ticket.customer.email}>`
     : ticket.customer.email;
   const canPermanentlyDelete =
-    viewer?.role === UserRole.SUPER_ADMIN && ticket.status === TicketStatus.CLOSED;
+    (viewer?.role === UserRole.SUPER_ADMIN ||
+      viewer?.role === UserRole.MANAGER ||
+      viewer?.role === UserRole.AGENT) &&
+    ticket.status === TicketStatus.CLOSED;
   const publicMessages = ticket.messages.filter(
     (message) => message.visibility === MessageVisibility.PUBLIC,
   );

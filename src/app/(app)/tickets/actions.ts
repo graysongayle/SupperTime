@@ -801,6 +801,14 @@ function getSelectedTicketIds(formData: FormData) {
     .filter(Boolean);
 }
 
+function canPermanentlyDeleteTickets(role: UserRole) {
+  return (
+    role === UserRole.SUPER_ADMIN ||
+    role === UserRole.MANAGER ||
+    role === UserRole.AGENT
+  );
+}
+
 export async function bulkUpdateTicketStatus(formData: FormData) {
   const actor = await requireTicketUser();
   const ticketIds = getSelectedTicketIds(formData);
@@ -1094,8 +1102,8 @@ export async function deleteClosedTicket(formData: FormData) {
   const actor = await requireTicketUser();
   const ticketId = requiredString(formData, "ticketId");
 
-  if (actor.role !== UserRole.SUPER_ADMIN) {
-    throw new Error("Only super-admins can permanently delete tickets.");
+  if (!canPermanentlyDeleteTickets(actor.role)) {
+    throw new Error("You do not have permission to permanently delete tickets.");
   }
 
   const ticket = await prisma.ticket.findUnique({
@@ -1149,8 +1157,8 @@ export async function bulkDeleteClosedTickets(formData: FormData) {
   const actor = await requireTicketUser();
   const ticketIds = getSelectedTicketIds(formData);
 
-  if (actor.role !== UserRole.SUPER_ADMIN) {
-    throw new Error("Only super-admins can permanently delete tickets.");
+  if (!canPermanentlyDeleteTickets(actor.role)) {
+    throw new Error("You do not have permission to permanently delete tickets.");
   }
 
   if (ticketIds.length === 0) {

@@ -375,7 +375,7 @@ function getStatusBreakdownLabel(counts: Record<TicketStatusValue, number>) {
 
 function isMissingPreferenceTableError(error: unknown) {
   return (
-    Boolean(error) &&
+    error !== null &&
     typeof error === "object" &&
     "code" in error &&
     (error as { code?: unknown }).code === "P2021"
@@ -624,7 +624,10 @@ async function getDashboardData(
       view,
     },
     agents,
-    canBulkDelete: currentUser?.role === UserRole.SUPER_ADMIN,
+    canBulkDelete:
+      currentUser?.role === UserRole.SUPER_ADMIN ||
+      currentUser?.role === UserRole.MANAGER ||
+      currentUser?.role === UserRole.AGENT,
     canBulkUpdateStatus:
       currentUser?.role === UserRole.SUPER_ADMIN ||
       currentUser?.role === UserRole.MANAGER ||

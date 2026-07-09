@@ -556,15 +556,20 @@ function isSafeUrl(value: string) {
 }
 
 function FormattedEmailSheet({
+  body,
   html,
   subject,
   trigger,
 }: {
+  body: string;
   html: string;
   subject: string;
   trigger: React.ReactNode;
 }) {
   const sanitizedHtml = useSanitizedEmailHtml(html);
+  const plainBody = normalizeMessageBody(body);
+  const [viewMode, setViewMode] = useState<"formatted" | "plain">("formatted");
+  const showFormatted = viewMode === "formatted" && sanitizedHtml;
 
   return (
     <Sheet>
@@ -574,15 +579,34 @@ function FormattedEmailSheet({
           <SheetTitle>Formatted email</SheetTitle>
           <SheetDescription>{subject}</SheetDescription>
         </SheetHeader>
-        {sanitizedHtml ? (
+        <div className="mx-4 flex items-center gap-2 border-b border-zinc-200 pb-3">
+          <Button
+            type="button"
+            variant={viewMode === "formatted" ? "default" : "outline"}
+            size="sm"
+            disabled={!sanitizedHtml}
+            onClick={() => setViewMode("formatted")}
+          >
+            Formatted
+          </Button>
+          <Button
+            type="button"
+            variant={viewMode === "plain" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setViewMode("plain")}
+          >
+            Plain text
+          </Button>
+        </div>
+        {showFormatted ? (
           <div
-            className="mx-4 mb-4 max-w-full overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 text-sm leading-6 text-zinc-800 [overflow-wrap:anywhere] [&_*]:max-w-full [&_a]:break-words [&_a]:text-cyan-700 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-zinc-300 [&_blockquote]:pl-3 [&_table]:w-full [&_table]:table-fixed [&_table]:border-collapse [&_td]:break-words [&_td]:border [&_td]:border-zinc-200 [&_td]:p-2 [&_th]:break-words [&_th]:border [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:p-2"
+            className="mx-4 mb-4 max-w-full overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 text-sm leading-6 text-zinc-800 [overflow-wrap:anywhere] [&_*]:static [&_*]:float-none [&_*]:max-w-full [&_*]:min-w-0 [&_*]:tracking-normal [&_a]:break-words [&_a]:text-cyan-700 [&_a]:underline [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-zinc-300 [&_blockquote]:pl-3 [&_br+br]:hidden [&_code]:rounded [&_code]:bg-zinc-100 [&_code]:px-1 [&_div]:my-1 [&_h1]:my-3 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:my-3 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:my-2 [&_h3]:text-base [&_h3]:font-semibold [&_hr]:my-4 [&_hr]:border-zinc-200 [&_li]:my-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-zinc-100 [&_pre]:p-3 [&_span]:leading-[inherit] [&_table]:my-3 [&_table]:max-w-full [&_table]:border-collapse [&_table]:text-sm [&_td]:break-words [&_td]:align-top [&_td]:border [&_td]:border-zinc-200 [&_td]:p-2 [&_th]:break-words [&_th]:border [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:p-2 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-5"
             dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
           />
         ) : (
-          <div className="mx-4 mb-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm text-muted-foreground">
-            This message does not have a formatted view available.
-          </div>
+          <pre className="mx-4 mb-4 max-w-full whitespace-pre-wrap break-words rounded-lg border border-zinc-200 bg-zinc-50 p-4 font-sans text-sm leading-6 text-zinc-800 [overflow-wrap:anywhere]">
+            {plainBody || "No message body."}
+          </pre>
         )}
       </SheetContent>
     </Sheet>
@@ -613,6 +637,7 @@ function MessageActions({ message }: { message: TimelineMessage }) {
         <DropdownMenuLabel>Actions</DropdownMenuLabel>
         {message.bodyHtml ? (
           <FormattedEmailSheet
+            body={message.body}
             html={message.bodyHtml}
             subject={`${getMessageLabel(message)} from ${getMessageAuthor(
               message,
