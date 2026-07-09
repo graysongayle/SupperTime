@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -326,12 +326,23 @@ function MessageAttachments({
 }
 
 function sanitizeEmailHtml(html: string) {
+  return sanitizeEmailHtmlDocument(html)?.body.innerHTML ?? "";
+}
+
+function sanitizeEmailHtmlDocument(html: string) {
   if (typeof window === "undefined") {
-    return "";
+    return null;
   }
 
-  const parser = new DOMParser();
-  const document = parser.parseFromString(html, "text/html");
+  let document: Document;
+
+  try {
+    const parser = new DOMParser();
+    document = parser.parseFromString(html, "text/html");
+  } catch {
+    return null;
+  }
+
   const blockedSelectors = [
     "script",
     "style",
@@ -387,7 +398,148 @@ function sanitizeEmailHtml(html: string) {
     }
   });
 
+  return document;
+}
+
+function textContentOf(element: Element) {
+  return (element.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+function isNoisyEmailElement(element: Element) {
+  const className =
+    typeof element.className === "string" ? element.className : "";
+  const classAndId = `${element.id} ${className}`.toLowerCase();
+
+  return [
+    "gmail_quote",
+    "gmail_signature",
+    "yahoo_quoted",
+    "moz-cite-prefix",
+    "mso",
+    "signature",
+    "quoted",
+    "unsubscribe",
+  ].some((token) => classAndId.includes(token));
+}
+
+function simplifyEmailHtml(html: string) {
+  const document = sanitizeEmailHtmlDocument(html);
+
+  if (!document) {
+    return "";
+  }
+
+  document
+    .querySelectorAll(
+      [
+        ".gmail_quote",
+        ".gmail_signature",
+        ".yahoo_quoted",
+        ".moz-cite-prefix",
+        "blockquote[type='cite']",
+      ].join(","),
+    )
+    .forEach((node) => node.remove());
+
+  document.body.querySelectorAll("*").forEach((element) => {
+    if (isNoisyEmailElement(element)) {
+      element.remove();
+      return;
+    }
+
+    if (!textContentOf(element) && element.children.length === 0) {
+      element.remove();
+    }
+  });
+
+  document.body.querySelectorAll("div").forEach((element) => {
+    if (element.children.length > 0) {
+      return;
+    }
+
+    const text = textContentOf(element);
+
+    if (!text) {
+      element.remove();
+      return;
+    }
+
+    const paragraph = document.createElement("p");
+    paragraph.textContent = text;
+    element.replaceWith(paragraph);
+  });
+
+  document.body.querySelectorAll("span").forEach((element) => {
+    if (element.children.length > 0) {
+      return;
+    }
+
+    element.replaceWith(document.createTextNode(element.textContent ?? ""));
+  });
+
+  document.body.querySelectorAll("p").forEach((element) => {
+    const text = textContentOf(element);
+
+    if (!text) {
+      element.remove();
+    }
+  });
+
+  const paragraphs = Array.from(document.body.querySelectorAll("p"));
+
+  for (let index = paragraphs.length - 1; index > 0; index -= 1) {
+    const current = paragraphs[index];
+    const previous = paragraphs[index - 1];
+
+    if (textContentOf(current) === textContentOf(previous)) {
+      current.remove();
+    }
+  }
+
   return document.body.innerHTML;
+}
+
+function MessageBody({ message }: { message: TimelineMessage }) {
+  const sanitizedHtml = useSanitizedEmailHtml(message.bodyHtml, {
+    simplify: true,
+  });
+  const plainBody = normalizeMessageBody(message.body);
+
+  if (sanitizedHtml) {
+    return (
+      <div
+        className="mt-3 max-w-full overflow-x-auto text-sm leading-6 text-zinc-700 [overflow-wrap:anywhere] [&_*]:max-w-full [&_a]:break-words [&_a]:text-cyan-700 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-zinc-300 [&_blockquote]:pl-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_table]:w-full [&_table]:table-fixed [&_table]:border-collapse [&_td]:break-words [&_td]:border [&_td]:border-zinc-200 [&_td]:p-2 [&_th]:break-words [&_th]:border [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:p-2 [&_ul]:list-disc [&_ul]:pl-5"
+        dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+      />
+    );
+  }
+
+  return (
+    <p className="mt-3 whitespace-pre-wrap break-words text-sm text-zinc-700 [overflow-wrap:anywhere]">
+      {plainBody || "No message body."}
+    </p>
+  );
+}
+
+function useSanitizedEmailHtml(
+  html: string | null,
+  options: { simplify?: boolean } = {},
+) {
+  const [sanitizedHtml, setSanitizedHtml] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!html) {
+      setSanitizedHtml(null);
+      return;
+    }
+
+    const nextHtml = options.simplify
+      ? simplifyEmailHtml(html)
+      : sanitizeEmailHtml(html);
+    setSanitizedHtml(nextHtml || null);
+  }, [html, options.simplify]);
+
+  return sanitizedHtml;
 }
 
 function isSafeUrl(value: string) {
@@ -412,7 +564,7 @@ function FormattedEmailSheet({
   subject: string;
   trigger: React.ReactNode;
 }) {
-  const sanitizedHtml = useMemo(() => sanitizeEmailHtml(html), [html]);
+  const sanitizedHtml = useSanitizedEmailHtml(html);
 
   return (
     <Sheet>
@@ -422,10 +574,16 @@ function FormattedEmailSheet({
           <SheetTitle>Formatted email</SheetTitle>
           <SheetDescription>{subject}</SheetDescription>
         </SheetHeader>
-        <div
-          className="mx-4 mb-4 max-w-full overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 text-sm leading-6 text-zinc-800 [overflow-wrap:anywhere] [&_*]:max-w-full [&_a]:break-words [&_a]:text-cyan-700 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-zinc-300 [&_blockquote]:pl-3 [&_table]:w-full [&_table]:table-fixed [&_table]:border-collapse [&_td]:break-words [&_td]:border [&_td]:border-zinc-200 [&_td]:p-2 [&_th]:break-words [&_th]:border [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:p-2"
-          dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-        />
+        {sanitizedHtml ? (
+          <div
+            className="mx-4 mb-4 max-w-full overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 text-sm leading-6 text-zinc-800 [overflow-wrap:anywhere] [&_*]:max-w-full [&_a]:break-words [&_a]:text-cyan-700 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-zinc-300 [&_blockquote]:pl-3 [&_table]:w-full [&_table]:table-fixed [&_table]:border-collapse [&_td]:break-words [&_td]:border [&_td]:border-zinc-200 [&_td]:p-2 [&_th]:break-words [&_th]:border [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:p-2"
+            dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+          />
+        ) : (
+          <div className="mx-4 mb-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm text-muted-foreground">
+            This message does not have a formatted view available.
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );
@@ -628,9 +786,7 @@ export function TicketTimeline({
                     message={message}
                     participants={participants}
                   />
-                  <p className="mt-3 whitespace-pre-wrap break-words text-sm text-zinc-700 [overflow-wrap:anywhere]">
-                    {message.body}
-                  </p>
+                  <MessageBody message={message} />
                   <MessageAttachments attachments={message.attachments} />
                 </div>
               )}
