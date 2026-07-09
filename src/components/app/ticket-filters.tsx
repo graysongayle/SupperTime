@@ -1,25 +1,66 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, RotateCcw, Save, Search } from "lucide-react";
 
+import {
+  clearTicketViewPreference,
+  saveTicketViewPreference,
+} from "@/app/(app)/tickets/actions";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { TicketPriority, TicketStatus } from "@/generated/prisma/enums";
+import { toast } from "@/hooks/use-toast";
 
-const storageKey = "suppertime.ticketFilters";
-const rememberedFilterKeys = [
-  "q",
-  "status",
-  "priority",
-  "assignee",
-  "includeClosed",
-];
+const defaultSort = "last_customer_desc";
+
+const sortOptions = [
+  {
+    label: "Customer reply newest",
+    value: "last_customer_desc",
+  },
+  {
+    label: "Customer reply oldest",
+    value: "last_customer_asc",
+  },
+  {
+    label: "Agent reply newest",
+    value: "last_agent_desc",
+  },
+  {
+    label: "Agent reply oldest",
+    value: "last_agent_asc",
+  },
+  {
+    label: "Last update newest",
+    value: "updated_desc",
+  },
+  {
+    label: "Last update oldest",
+    value: "updated_asc",
+  },
+  {
+    label: "Created newest",
+    value: "received_desc",
+  },
+  {
+    label: "Created oldest",
+    value: "received_asc",
+  },
+] as const;
 
 const statusLabels = {
   [TicketStatus.OPEN]: "Open",
@@ -44,6 +85,7 @@ type TicketFiltersProps = {
     includeClosed: boolean;
     priorities: TicketPriority[];
     q: string | null;
+    sort: string;
     statuses: TicketStatus[];
     view: string | null;
   };
@@ -53,6 +95,13 @@ type TicketFiltersProps = {
     name: string | null;
   }>;
   hasFilters: boolean;
+  hasSavedPreference: boolean;
+};
+
+type TicketSearchControlProps = {
+  active: {
+    q: string | null;
+  };
 };
 
 type MultiSelectFilterProps<T extends string> = {
@@ -112,7 +161,7 @@ function MultiSelectFilter<T extends string>({
         <Button
           type="button"
           variant="outline"
-          className="h-9 justify-between bg-zinc-50 px-3 font-normal"
+          className="h-9 min-w-0 justify-between bg-zinc-50 px-3 font-normal"
         >
           <span className="min-w-0 truncate">
             {formatSelectedLabel(label, pluralLabel, selectedLabels)}
@@ -162,26 +211,12 @@ export function TicketFilters({
   active,
   agents,
   hasFilters,
+  hasSavedPreference,
 }: TicketFiltersProps) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [query, setQuery] = useState(active.q ?? "");
-
-  useEffect(() => {
-    setQuery(active.q ?? "");
-  }, [active.q]);
-
-  useEffect(() => {
-    const currentQuery = searchParams.toString();
-
-    if (currentQuery) {
-      rememberFilterQuery(searchParams);
-      return;
-    }
-
-    window.localStorage.removeItem(storageKey);
-  }, [pathname, router, searchParams]);
+  const [isSavingPreference, startSavingPreference] = useTransition();
 
   function updateFilter(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -202,11 +237,9 @@ export function TicketFilters({
     const nextQuery = params.toString();
 
     if (nextQuery) {
-      rememberFilterQuery(params);
       router.replace(`${pathname}?${nextQuery}`);
     } else {
-      window.localStorage.removeItem(storageKey);
-      router.replace(pathname);
+      router.replace(`${pathname}?sort=${defaultSort}`);
     }
   }
 
@@ -215,13 +248,88 @@ export function TicketFilters({
   }
 
   function clearFilters() {
-    setQuery("");
-    window.localStorage.removeItem(storageKey);
-    router.replace(pathname);
+    router.replace(`${pathname}?sort=${defaultSort}`);
+  }
+
+  function buildPreferenceFormData() {
+    const formData = new FormData();
+
+    if (active.statuses.length > 0) {
+      formData.set("status", active.statuses.join(","));
+    }
+
+    if (active.priorities.length > 0) {
+      formData.set("priority", active.priorities.join(","));
+    }
+
+    if (active.assignees.length > 0) {
+      formData.set("assignee", active.assignees.join(","));
+    }
+
+    if (active.sort) {
+      formData.set("sort", active.sort);
+    }
+
+    if (active.view) {
+      formData.set("view", active.view);
+    }
+
+    if (active.includeClosed) {
+      formData.set("includeClosed", "true");
+    }
+
+    return formData;
+  }
+
+  function saveDefaultView() {
+    startSavingPreference(async () => {
+      try {
+        const result = await saveTicketViewPreference(buildPreferenceFormData());
+
+        toast({
+          variant: "success",
+          title: "Default saved",
+          description: result.message,
+        });
+        router.refresh();
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Save failed",
+          description:
+            error instanceof Error
+              ? error.message
+              : "The default view was not saved.",
+        });
+      }
+    });
+  }
+
+  function clearDefaultView() {
+    startSavingPreference(async () => {
+      try {
+        const result = await clearTicketViewPreference();
+
+        toast({
+          variant: "success",
+          title: "Default cleared",
+          description: result.message,
+        });
+        router.refresh();
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Clear failed",
+          description:
+            error instanceof Error
+              ? error.message
+              : "The saved default view was not cleared.",
+        });
+      }
+    });
   }
 
   const assigneeDisabled = active.view === "mine" || active.view === "unassigned";
-  const queryChanged = query.trim() !== (active.q ?? "");
   const statusOptions = Object.values(TicketStatus).map((status) => ({
     label: statusLabels[status],
     value: status,
@@ -242,31 +350,7 @@ export function TicketFilters({
   ];
 
   return (
-    <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1.5fr)_auto_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
-      <input
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            updateFilter("q", query);
-          }
-        }}
-        placeholder="Search subject, customer, or message"
-        className="h-9 min-w-0 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm shadow-xs"
-      />
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className="bg-white"
-        disabled={!queryChanged}
-        onClick={() => updateFilter("q", query)}
-        title="Search tickets"
-        aria-label="Search tickets"
-      >
-        <Search className="size-4" />
-      </Button>
+    <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
       <MultiSelectFilter
         label="Status"
         options={statusOptions}
@@ -281,7 +365,11 @@ export function TicketFilters({
         selectedValues={active.priorities}
         onChange={(values) => updateMultiFilter("priority", values)}
       />
-      <div className={assigneeDisabled ? "pointer-events-none opacity-50" : ""}>
+      <div
+        className={
+          assigneeDisabled ? "h-9 pointer-events-none opacity-50" : "h-9"
+        }
+      >
         <MultiSelectFilter
           label="Assignee"
           options={assigneeOptions}
@@ -305,32 +393,113 @@ export function TicketFilters({
         <Button
           type="button"
           variant="outline"
-          className="bg-white"
+          className="h-9 bg-white"
           onClick={clearFilters}
         >
           Clear
         </Button>
       ) : null}
+      <Button
+        type="button"
+        variant="outline"
+        className="h-9 bg-white"
+        disabled={isSavingPreference}
+        onClick={saveDefaultView}
+      >
+        <Save className="size-4" />
+        Save default
+      </Button>
+      {hasSavedPreference ? (
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-9"
+          disabled={isSavingPreference}
+          onClick={clearDefaultView}
+        >
+          <RotateCcw className="size-4" />
+          Clear default
+        </Button>
+      ) : null}
+      <Select
+        value={active.sort}
+        onValueChange={(value) => updateFilter("sort", value)}
+      >
+        <SelectTrigger className="h-9 min-w-0 bg-zinc-50 lg:ml-auto lg:w-[210px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {sortOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
     </div>
   );
 }
 
-function rememberFilterQuery(params: URLSearchParams) {
-  const remembered = new URLSearchParams();
+export function TicketSearchControl({ active }: TicketSearchControlProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [query, setQuery] = useState(active.q ?? "");
+  const queryChanged = query.trim() !== (active.q ?? "");
 
-  for (const key of rememberedFilterKeys) {
-    const value = params.get(key);
+  useEffect(() => {
+    setQuery(active.q ?? "");
+  }, [active.q]);
 
-    if (value) {
-      remembered.set(key, value);
+  function submitSearch() {
+    const params = new URLSearchParams(searchParams.toString());
+    const trimmed = query.trim();
+
+    params.delete("page");
+
+    if (trimmed) {
+      params.set("q", trimmed);
+    } else {
+      params.delete("q");
+    }
+
+    const nextQuery = params.toString();
+
+    if (nextQuery) {
+      router.replace(`${pathname}?${nextQuery}`);
+    } else {
+      router.replace(pathname);
     }
   }
 
-  const query = remembered.toString();
-
-  if (query) {
-    window.localStorage.setItem(storageKey, query);
-  } else {
-    window.localStorage.removeItem(storageKey);
-  }
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-2 lg:max-w-xl">
+      <input
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            submitSearch();
+          }
+        }}
+        placeholder="Search subject, customer, or message"
+        className="h-9 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm shadow-xs"
+      />
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className="shrink-0 bg-white"
+        disabled={!queryChanged}
+        onClick={submitSearch}
+        title="Search tickets"
+        aria-label="Search tickets"
+      >
+        <Search className="size-4" />
+      </Button>
+    </div>
+  );
 }

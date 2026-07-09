@@ -35,6 +35,18 @@ import {
 
 const validStatuses = new Set<TicketStatusValue>(Object.values(TicketStatus));
 const validPriorities = new Set<TicketPriorityValue>(Object.values(TicketPriority));
+const ticketPreferencePageKey = "tickets";
+const validTicketSorts = new Set([
+  "last_customer_desc",
+  "last_customer_asc",
+  "last_agent_desc",
+  "last_agent_asc",
+  "updated_desc",
+  "updated_asc",
+  "received_desc",
+  "received_asc",
+]);
+const validTicketViews = new Set(["mine", "unassigned"]);
 const statusLabels: Record<TicketStatusValue, string> = {
   [TicketStatus.OPEN]: "Open",
   [TicketStatus.PENDING]: "Waiting on Other",
@@ -83,6 +95,60 @@ function optionalString(formData: FormData, key: string) {
   return value || null;
 }
 
+function parseCommaSeparated(value: string | null) {
+  if (!value) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function normalizeTicketPreference(formData: FormData) {
+  const preferences: Record<string, string> = {};
+  const statuses = parseCommaSeparated(optionalString(formData, "status"))
+    .map((status) => status.toUpperCase() as TicketStatusValue)
+    .filter((status) => validStatuses.has(status));
+  const priorities = parseCommaSeparated(optionalString(formData, "priority"))
+    .map((priority) => priority.toUpperCase() as TicketPriorityValue)
+    .filter((priority) => validPriorities.has(priority));
+  const assignees = parseCommaSeparated(optionalString(formData, "assignee"));
+  const sort = optionalString(formData, "sort");
+  const view = optionalString(formData, "view");
+
+  if (statuses.length > 0) {
+    preferences.status = statuses.join(",");
+  }
+
+  if (priorities.length > 0) {
+    preferences.priority = priorities.join(",");
+  }
+
+  if (assignees.length > 0) {
+    preferences.assignee = assignees.join(",");
+  }
+
+  if (sort && validTicketSorts.has(sort)) {
+    preferences.sort = sort;
+  }
+
+  if (view && validTicketViews.has(view)) {
+    preferences.view = view;
+  }
+
+  if (String(formData.get("includeClosed") ?? "") === "true") {
+    preferences.includeClosed = "true";
+  }
+
+  return preferences;
+}
+
 function parseEmailList(value: string | null) {
   if (!value) {
     return [];
@@ -102,6 +168,53 @@ function assertValidEmail(email: string) {
 
 function formatActor(actor: { email: string; name: string | null }) {
   return actor.name ? `${actor.name} <${actor.email}>` : actor.email;
+}
+
+export async function saveTicketViewPreference(formData: FormData) {
+  const actor = await requireTicketUser();
+  const preferences = normalizeTicketPreference(formData);
+
+  await prisma.userPagePreference.upsert({
+    where: {
+      userId_pageKey: {
+        userId: actor.id,
+        pageKey: ticketPreferencePageKey,
+      },
+    },
+    create: {
+      userId: actor.id,
+      pageKey: ticketPreferencePageKey,
+      preferences,
+    },
+    update: {
+      preferences,
+    },
+  });
+
+  revalidatePath("/tickets");
+
+  return {
+    ok: true,
+    message: "Your ticket list default was saved.",
+  };
+}
+
+export async function clearTicketViewPreference() {
+  const actor = await requireTicketUser();
+
+  await prisma.userPagePreference.deleteMany({
+    where: {
+      userId: actor.id,
+      pageKey: ticketPreferencePageKey,
+    },
+  });
+
+  revalidatePath("/tickets");
+
+  return {
+    ok: true,
+    message: "Your saved ticket list default was cleared.",
+  };
 }
 
 function formatNullableUser(user: { email: string; name: string | null } | null) {
@@ -362,6 +475,8 @@ export async function addPublicReply(formData: FormData) {
     throw new Error(result.reason);
   }
 
+  const messageCreatedAt = new Date();
+
   await prisma.$transaction(async (tx) => {
     for (const email of additionalCcEmails) {
       if (email === ticket.customer.email.toLowerCase()) {
@@ -410,6 +525,7 @@ export async function addPublicReply(formData: FormData) {
         emailFrom: actor.name ? `${actor.name} <${actor.email}>` : actor.email,
         emailTo: ticket.customer.email,
         emailCc: ccRecipients,
+        createdAt: messageCreatedAt,
       },
     });
 
@@ -429,7 +545,8 @@ export async function addPublicReply(formData: FormData) {
       },
       data: {
         emailThreadId: ticket.emailThreadId ?? result.messageId,
-        updatedAt: new Date(),
+        lastAgentMessageAt: messageCreatedAt,
+        updatedAt: messageCreatedAt,
       },
     });
   });

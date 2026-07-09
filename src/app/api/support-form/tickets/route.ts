@@ -177,6 +177,7 @@ export async function POST(request: NextRequest) {
   ]
     .filter(Boolean)
     .join("");
+  const messageCreatedAt = new Date();
 
   const ticket = await prisma.$transaction(async (tx) => {
     const customer = await tx.customer.upsert({
@@ -203,10 +204,12 @@ export async function POST(request: NextRequest) {
         source: TicketSource.EMBEDDED_FORM,
         supportFormId: supportForm.id,
         subject,
+        lastCustomerMessageAt: messageCreatedAt,
         messages: {
           create: {
             authorType: MessageAuthorType.CUSTOMER,
             body,
+            createdAt: messageCreatedAt,
             customerId: customer.id,
             emailFrom: name ? `${name} <${email}>` : email,
             visibility: MessageVisibility.PUBLIC,

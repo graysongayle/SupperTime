@@ -322,6 +322,33 @@ async function importTicket(pool, input, importRunId) {
       ],
     );
   }
+
+  await refreshTicketMessageActivity(pool, ticketId);
+}
+
+async function refreshTicketMessageActivity(pool, ticketId) {
+  await pool.query(
+    `
+      update "Ticket"
+      set
+        "lastCustomerMessageAt" = (
+          select max("createdAt")
+          from "TicketMessage"
+          where "ticketId" = $1
+            and "authorType" = 'CUSTOMER'::"MessageAuthorType"
+            and "visibility" = 'PUBLIC'::"MessageVisibility"
+        ),
+        "lastAgentMessageAt" = (
+          select max("createdAt")
+          from "TicketMessage"
+          where "ticketId" = $1
+            and "authorType" = 'AGENT'::"MessageAuthorType"
+            and "visibility" = 'PUBLIC'::"MessageVisibility"
+        )
+      where "id" = $1
+    `,
+    [ticketId],
+  );
 }
 
 async function upsertCustomer(pool, customer) {

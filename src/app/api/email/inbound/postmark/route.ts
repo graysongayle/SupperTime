@@ -322,6 +322,7 @@ async function appendInboundMessage({
       },
     });
 
+    const messageCreatedAt = new Date();
     const message = await tx.ticketMessage.create({
       data: {
         ticketId,
@@ -337,6 +338,7 @@ async function appendInboundMessage({
         emailTo: formatAddresses(payload.ToFull),
         emailCc: formatAddresses(payload.CcFull),
         customerId: customer.id,
+        createdAt: messageCreatedAt,
       },
       select: {
         id: true,
@@ -359,9 +361,10 @@ async function appendInboundMessage({
       },
       data: {
         closedAt: shouldReopen ? null : undefined,
+        lastCustomerMessageAt: messageCreatedAt,
         resolvedAt: shouldReopen ? null : undefined,
         status: shouldReopen ? TicketStatus.OPEN : undefined,
-        updatedAt: new Date(),
+        updatedAt: messageCreatedAt,
       },
     });
 
@@ -430,6 +433,7 @@ async function createInboundTicket({
       },
     });
 
+    const messageCreatedAt = new Date();
     const ticket = await tx.ticket.create({
       data: {
         subject,
@@ -439,6 +443,7 @@ async function createInboundTicket({
         emailThreadId: inboundMessageId,
         emailReplyToken,
         customerId: customer.id,
+        lastCustomerMessageAt: messageCreatedAt,
         statusHistory: {
           create: {
             to: TicketStatus.OPEN,
@@ -474,6 +479,7 @@ async function createInboundTicket({
         emailTo: formatAddresses(payload.ToFull),
         emailCc: formatAddresses(payload.CcFull),
         customerId: customer.id,
+        createdAt: messageCreatedAt,
       },
       select: {
         id: true,

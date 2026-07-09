@@ -39,6 +39,7 @@ try {
   await upsertTags();
   await upsertTickets(assignedToId);
   await upsertMessages(assignedToId);
+  await refreshTicketMessageActivity();
   await upsertAttachments();
   await upsertTicketTags();
   await upsertStatusHistory(assignedToId);
@@ -275,6 +276,34 @@ async function upsertStatusHistory(assignedToId) {
         "createdAt" = excluded."createdAt"
     `,
     [assignedToId]
+  );
+}
+
+async function refreshTicketMessageActivity() {
+  await pool.query(
+    `
+      update "Ticket" t
+      set
+        "lastCustomerMessageAt" = latest_customer."createdAt",
+        "lastAgentMessageAt" = latest_agent."createdAt"
+      from "Ticket" scoped
+      left join lateral (
+        select max("createdAt") as "createdAt"
+        from "TicketMessage"
+        where "ticketId" = scoped."id"
+          and "authorType" = 'CUSTOMER'::"MessageAuthorType"
+          and "visibility" = 'PUBLIC'::"MessageVisibility"
+      ) latest_customer on true
+      left join lateral (
+        select max("createdAt") as "createdAt"
+        from "TicketMessage"
+        where "ticketId" = scoped."id"
+          and "authorType" = 'AGENT'::"MessageAuthorType"
+          and "visibility" = 'PUBLIC'::"MessageVisibility"
+      ) latest_agent on true
+      where t."id" = scoped."id"
+        and scoped."id" like 'sample_ticket_%'
+    `
   );
 }
 

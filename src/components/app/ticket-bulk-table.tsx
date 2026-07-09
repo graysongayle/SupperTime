@@ -87,6 +87,8 @@ type TicketBulkTableTicket = {
   };
   createdAt: Date | string;
   id: string;
+  lastAgentMessageAt: Date | string | null;
+  lastCustomerMessageAt: Date | string | null;
   messages: Array<{
     authorType: MessageAuthorTypeValue;
     createdAt: Date | string;
@@ -147,6 +149,10 @@ function formatRelativeTime(value: Date | string) {
   return `${Math.floor(diffHours / 24)}d`;
 }
 
+function formatOptionalRelativeTime(value: Date | string | null) {
+  return value ? formatRelativeTime(value) : "None";
+}
+
 export function TicketBulkTable({
   activeStatus,
   canBulkDelete,
@@ -159,7 +165,7 @@ export function TicketBulkTable({
   const [displayTickets, setDisplayTickets] =
     useState<TicketBulkTableTicket[]>(tickets);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [status, setStatus] = useState<TicketStatusValue>(TicketStatus.CLOSED);
+  const [status, setStatus] = useState<TicketStatusValue | null>(null);
   const [isPending, startTransition] = useTransition();
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const allVisibleSelected =
@@ -211,6 +217,15 @@ export function TicketBulkTable({
   }
 
   function runBulkStatusUpdate() {
+    if (!status) {
+      toast({
+        variant: "destructive",
+        title: "Choose a status",
+        description: "Select the status to apply before updating tickets.",
+      });
+      return;
+    }
+
     startTransition(async () => {
       try {
         const formData = selectedFormData();
@@ -309,13 +324,13 @@ export function TicketBulkTable({
                   Set status
                 </span>
                 <Select
-                  value={status}
+                  value={status ?? undefined}
                   onValueChange={(value) =>
                     setStatus(value as TicketStatusValue)
                   }
                 >
                   <SelectTrigger size="sm" className="w-[190px] bg-white">
-                    <SelectValue />
+                    <SelectValue placeholder="Choose status" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
@@ -330,7 +345,7 @@ export function TicketBulkTable({
                 <Button
                   type="button"
                   size="sm"
-                  disabled={isPending}
+                  disabled={isPending || !status}
                   onClick={runBulkStatusUpdate}
                 >
                   Apply
@@ -391,7 +406,7 @@ export function TicketBulkTable({
               <TableHead className="hidden w-[150px] xl:table-cell">
                 Assignee
               </TableHead>
-              <TableHead className="w-[150px] text-right">Updated</TableHead>
+              <TableHead className="w-[170px] text-right">Activity</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -488,8 +503,16 @@ export function TicketBulkTable({
                   <TableCell className="hidden whitespace-normal break-words [overflow-wrap:anywhere] xl:table-cell">
                     {assigneeName}
                   </TableCell>
-                  <TableCell className="w-[150px] whitespace-nowrap text-right text-muted-foreground">
-                    <div>{formatRelativeTime(ticket.updatedAt)}</div>
+                  <TableCell className="w-[170px] whitespace-nowrap text-right text-muted-foreground">
+                    <div className="text-xs">
+                      Customer {formatOptionalRelativeTime(ticket.lastCustomerMessageAt)}
+                    </div>
+                    <div className="text-xs">
+                      Agent {formatOptionalRelativeTime(ticket.lastAgentMessageAt)}
+                    </div>
+                    <div className="text-xs">
+                      Update {formatRelativeTime(ticket.updatedAt)}
+                    </div>
                     {agingState ? (
                       <div className="mt-1 flex justify-end">
                         <Badge

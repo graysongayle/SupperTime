@@ -1,9 +1,13 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TicketBulkTable } from "@/components/app/ticket-bulk-table";
-import { TicketFilters } from "@/components/app/ticket-filters";
+import {
+  TicketFilters,
+  TicketSearchControl,
+} from "@/components/app/ticket-filters";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Prisma } from "@/generated/prisma/client";
@@ -43,18 +47,42 @@ const validPriorities = new Set<TicketPriorityValue>(
   Object.values(TicketPriority),
 );
 const unassignedAssigneeValue = "unassigned";
+const ticketPreferencePageKey = "tickets";
+const ticketSorts = [
+  "last_customer_desc",
+  "last_customer_asc",
+  "last_agent_desc",
+  "last_agent_asc",
+  "updated_desc",
+  "updated_asc",
+  "received_desc",
+  "received_asc",
+] as const;
+const defaultSort = "last_customer_desc";
+const validSorts = new Set<string>(ticketSorts);
+
+type TicketSort = (typeof ticketSorts)[number];
 
 type TicketSearchParams = {
   q?: string;
   status?: string;
   priority?: string;
   assignee?: string;
+  sort?: string;
   view?: string;
   includeClosed?: string;
   page?: string;
 };
 
 const pageSize = 25;
+const savedPreferenceKeys = [
+  "status",
+  "priority",
+  "assignee",
+  "sort",
+  "view",
+  "includeClosed",
+] as const;
 
 const activeAgingStatuses = new Set<TicketStatusValue>([
   TicketStatus.OPEN,
@@ -79,6 +107,135 @@ function normalizeEnumValues<T extends string>(
   );
 }
 
+function normalizeSort(value: string | undefined): TicketSort {
+  return validSorts.has(value as TicketSort)
+    ? (value as TicketSort)
+    : defaultSort;
+}
+
+function hasSearchParams(searchParams: TicketSearchParams) {
+  return Object.values(searchParams).some((value) => Boolean(value));
+}
+
+function normalizeSavedPreferenceValue(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const source = value as Record<string, unknown>;
+  const preference: Partial<TicketSearchParams> = {};
+  const statuses = normalizeEnumValues<TicketStatusValue>(
+    typeof source.status === "string" ? source.status : undefined,
+    validStatuses,
+  );
+  const priorities = normalizeEnumValues<TicketPriorityValue>(
+    typeof source.priority === "string" ? source.priority : undefined,
+    validPriorities,
+  );
+  const assignees =
+    typeof source.assignee === "string"
+      ? Array.from(
+          new Set(
+            source.assignee
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean),
+          ),
+        )
+      : [];
+  const sort = normalizeSort(
+    typeof source.sort === "string" ? source.sort : undefined,
+  );
+
+  if (statuses.length > 0) {
+    preference.status = statuses.join(",");
+  }
+
+  if (priorities.length > 0) {
+    preference.priority = priorities.join(",");
+  }
+
+  if (assignees.length > 0) {
+    preference.assignee = assignees.join(",");
+  }
+
+  if (sort !== defaultSort) {
+    preference.sort = sort;
+  }
+
+  if (source.view === "mine" || source.view === "unassigned") {
+    preference.view = source.view;
+  }
+
+  if (source.includeClosed === "true") {
+    preference.includeClosed = "true";
+  }
+
+  return preference;
+}
+
+function buildSavedPreferenceQuery(preference: Partial<TicketSearchParams>) {
+  const params = new URLSearchParams();
+
+  savedPreferenceKeys.forEach((key) => {
+    const value = preference[key];
+
+    if (value) {
+      params.set(key, value);
+    }
+  });
+
+  return params.toString();
+}
+
+function buildTicketOrderBy(sort: TicketSort): Prisma.TicketOrderByWithRelationInput[] {
+  if (sort === "last_customer_asc") {
+    return [
+      { lastCustomerMessageAt: { sort: "asc", nulls: "last" } },
+      { updatedAt: "asc" },
+      { number: "asc" },
+    ];
+  }
+
+  if (sort === "last_agent_desc") {
+    return [
+      { lastAgentMessageAt: { sort: "desc", nulls: "last" } },
+      { updatedAt: "desc" },
+      { number: "desc" },
+    ];
+  }
+
+  if (sort === "last_agent_asc") {
+    return [
+      { lastAgentMessageAt: { sort: "asc", nulls: "last" } },
+      { updatedAt: "asc" },
+      { number: "asc" },
+    ];
+  }
+
+  if (sort === "updated_desc") {
+    return [{ updatedAt: "desc" }, { number: "desc" }];
+  }
+
+  if (sort === "updated_asc") {
+    return [{ updatedAt: "asc" }, { number: "asc" }];
+  }
+
+  if (sort === "received_desc") {
+    return [{ createdAt: "desc" }, { number: "desc" }];
+  }
+
+  if (sort === "received_asc") {
+    return [{ createdAt: "asc" }, { number: "asc" }];
+  }
+
+  return [
+    { lastCustomerMessageAt: { sort: "desc", nulls: "last" } },
+    { updatedAt: "desc" },
+    { number: "desc" },
+  ];
+}
+
 function buildHref(
   current: TicketSearchParams,
   patch: Partial<TicketSearchParams>,
@@ -89,6 +246,7 @@ function buildHref(
     status: current.status,
     priority: current.priority,
     assignee: current.assignee,
+    sort: current.sort,
     view: current.view,
     includeClosed: current.includeClosed,
     page: current.page,
@@ -199,23 +357,84 @@ function formatAge(from: Date) {
   return `${Math.floor(diffHours / 24)}d`;
 }
 
-function getPriorityBreakdownLabel(
-  counts: Record<TicketPriorityValue, number>,
-) {
-  const orderedPriorities = [
-    TicketPriority.URGENT,
-    TicketPriority.HIGH,
-    TicketPriority.NORMAL,
-    TicketPriority.LOW,
+function getStatusBreakdownLabel(counts: Record<TicketStatusValue, number>) {
+  const orderedStatuses = [
+    TicketStatus.OPEN,
+    TicketStatus.PENDING,
+    TicketStatus.WAITING_ON_CUSTOMER,
+    TicketStatus.WAITING_ON_THIRD_PARTY,
+    TicketStatus.RESOLVED,
+    TicketStatus.CLOSED,
   ];
 
-  return orderedPriorities
-    .map((priority) => `${priorityLabels[priority]} ${counts[priority]}`)
+  return orderedStatuses
+    .filter((status) => counts[status] > 0)
+    .map((status) => `${statusLabels[status]} ${counts[status]}`)
     .join(" · ");
 }
 
-async function getDashboardData(searchParams: TicketSearchParams) {
+function isMissingPreferenceTableError(error: unknown) {
+  return (
+    Boolean(error) &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2021"
+  );
+}
+
+async function getSavedTicketPreference(userId: string) {
+  try {
+    return await prisma.userPagePreference.findUnique({
+      where: {
+        userId_pageKey: {
+          userId,
+          pageKey: ticketPreferencePageKey,
+        },
+      },
+      select: {
+        preferences: true,
+      },
+    });
+  } catch (error) {
+    if (isMissingPreferenceTableError(error)) {
+      console.warn(
+        "[ticket-preferences] UserPagePreference table is missing. Run pnpm db:migrate.",
+      );
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+async function resolveTicketSearchParams(searchParams: TicketSearchParams) {
   const currentUser = await getCurrentAppUser();
+  const savedPreference = currentUser
+    ? await getSavedTicketPreference(currentUser.id)
+    : null;
+
+  if (!hasSearchParams(searchParams) && savedPreference) {
+    const savedQuery = buildSavedPreferenceQuery(
+      normalizeSavedPreferenceValue(savedPreference.preferences),
+    );
+
+    if (savedQuery) {
+      redirect(`/tickets?${savedQuery}`);
+    }
+  }
+
+  return {
+    currentUser,
+    hasSavedPreference: Boolean(savedPreference),
+    searchParams,
+  };
+}
+
+async function getDashboardData(
+  searchParams: TicketSearchParams,
+  currentUser: Awaited<ReturnType<typeof getCurrentAppUser>>,
+  hasSavedPreference: boolean,
+) {
   const statuses = normalizeEnumValues<TicketStatusValue>(
     searchParams.status,
     validStatuses,
@@ -225,6 +444,7 @@ async function getDashboardData(searchParams: TicketSearchParams) {
     validPriorities,
   );
   const q = searchParams.q?.trim() || null;
+  const sort = normalizeSort(searchParams.sort);
   const view = searchParams.view?.trim() || null;
   const assignees = searchParams.assignee
     ? Array.from(
@@ -255,9 +475,7 @@ async function getDashboardData(searchParams: TicketSearchParams) {
     summaryTickets,
   ] = await Promise.all([
     prisma.ticket.findMany({
-      orderBy: {
-        updatedAt: "desc",
-      },
+      orderBy: buildTicketOrderBy(sort),
       skip: (page - 1) * pageSize,
       take: pageSize,
       where,
@@ -326,7 +544,6 @@ async function getDashboardData(searchParams: TicketSearchParams) {
       where,
       select: {
         createdAt: true,
-        priority: true,
         status: true,
         _count: {
           select: {
@@ -357,17 +574,19 @@ async function getDashboardData(searchParams: TicketSearchParams) {
       },
     }),
   ]);
-  const priorityCounts: Record<TicketPriorityValue, number> = {
-    [TicketPriority.URGENT]: 0,
-    [TicketPriority.HIGH]: 0,
-    [TicketPriority.NORMAL]: 0,
-    [TicketPriority.LOW]: 0,
+  const statusCounts: Record<TicketStatusValue, number> = {
+    [TicketStatus.OPEN]: 0,
+    [TicketStatus.PENDING]: 0,
+    [TicketStatus.WAITING_ON_CUSTOMER]: 0,
+    [TicketStatus.WAITING_ON_THIRD_PARTY]: 0,
+    [TicketStatus.RESOLVED]: 0,
+    [TicketStatus.CLOSED]: 0,
   };
   let needsResponseCount = 0;
   let oldestWaitingSince: Date | null = null;
 
   summaryTickets.forEach((ticket) => {
-    priorityCounts[ticket.priority] += 1;
+    statusCounts[ticket.status] += 1;
 
     if (!activeAgingStatuses.has(ticket.status)) {
       return;
@@ -400,6 +619,7 @@ async function getDashboardData(searchParams: TicketSearchParams) {
       page,
       priorities,
       q,
+      sort,
       statuses,
       view,
     },
@@ -409,12 +629,13 @@ async function getDashboardData(searchParams: TicketSearchParams) {
       currentUser?.role === UserRole.SUPER_ADMIN ||
       currentUser?.role === UserRole.MANAGER ||
       currentUser?.role === UserRole.AGENT,
+    hasSavedPreference,
     summary: {
       needsResponseCount,
       oldestWaitingLabel: oldestWaitingSince
         ? formatAge(oldestWaitingSince)
         : "None",
-      priorityBreakdown: getPriorityBreakdownLabel(priorityCounts),
+      statusBreakdown: getStatusBreakdownLabel(statusCounts) || "No tickets",
       totalTickets,
     },
     tickets,
@@ -433,6 +654,7 @@ function getPageHeading(active: {
   page: number;
   priorities: TicketPriorityValue[];
   q: string | null;
+  sort: TicketSort;
   statuses: TicketStatusValue[];
   view: string | null;
 }) {
@@ -522,8 +744,17 @@ export default async function TicketsPage({
 }: {
   searchParams: Promise<TicketSearchParams>;
 }) {
-  const params = await searchParams;
-  const dashboard = await getDashboardData(params);
+  const rawParams = await searchParams;
+  const {
+    currentUser,
+    hasSavedPreference,
+    searchParams: params,
+  } = await resolveTicketSearchParams(rawParams);
+  const dashboard = await getDashboardData(
+    params,
+    currentUser,
+    hasSavedPreference,
+  );
   const activeTab =
     dashboard.active.view === "mine" || dashboard.active.view === "unassigned"
       ? dashboard.active.view
@@ -534,6 +765,7 @@ export default async function TicketsPage({
       dashboard.active.priorities.length > 0 ||
       dashboard.active.assignees.length > 0 ||
       dashboard.active.view ||
+      dashboard.active.sort !== defaultSort ||
       dashboard.active.includeClosed,
   );
   const heading = getPageHeading(dashboard.active);
@@ -619,10 +851,10 @@ export default async function TicketsPage({
           </div>
           <div className="min-w-0 px-3 py-2.5">
             <div className="text-xs font-medium text-muted-foreground">
-              By priority
+              By status
             </div>
             <div className="mt-1 break-words text-sm font-medium text-zinc-950 [overflow-wrap:anywhere]">
-              {dashboard.summary.priorityBreakdown}
+              {dashboard.summary.statusBreakdown}
             </div>
           </div>
         </div>
@@ -630,7 +862,8 @@ export default async function TicketsPage({
 
       <div className="min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
         <div className="flex min-w-0 flex-col gap-3 p-3">
-          <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center">
+            <TicketSearchControl active={dashboard.active} />
             <Tabs value={activeTab} className="min-w-0">
               <TabsList className="max-w-full flex-wrap overflow-visible">
                 <TabsTrigger value="all" asChild>
@@ -674,6 +907,7 @@ export default async function TicketsPage({
             active={dashboard.active}
             agents={dashboard.agents}
             hasFilters={hasFilters}
+            hasSavedPreference={dashboard.hasSavedPreference}
           />
         </div>
         <Separator />

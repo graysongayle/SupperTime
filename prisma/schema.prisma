@@ -70,6 +70,21 @@ model User {
   assignedTickets Ticket[]              @relation("AssignedTickets")
   messages        TicketMessage[]
   statusChanges   TicketStatusHistory[]
+  pagePreferences UserPagePreference[]
+}
+
+model UserPagePreference {
+  id          String   @id @default(cuid())
+  pageKey     String
+  preferences Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, pageKey])
+  @@index([pageKey])
 }
 
 model Customer {
@@ -99,10 +114,12 @@ model Ticket {
   freshdeskTicketId   String?
   freshdeskImportedAt DateTime?
   freshdeskImportId   String?
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
-  resolvedAt          DateTime?
-  closedAt            DateTime?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  lastCustomerMessageAt DateTime?
+  lastAgentMessageAt    DateTime?
+  resolvedAt            DateTime?
+  closedAt              DateTime?
 
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id])
@@ -121,6 +138,10 @@ model Ticket {
   statusHistory TicketStatusHistory[]
 
   @@index([status, priority])
+  @@index([lastCustomerMessageAt])
+  @@index([lastAgentMessageAt])
+  @@index([createdAt])
+  @@index([updatedAt])
   @@index([customerId])
   @@index([assignedToId])
   @@index([freshdeskTicketId])
