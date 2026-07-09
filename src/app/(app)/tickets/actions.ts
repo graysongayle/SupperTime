@@ -143,10 +143,6 @@ function normalizeTicketPreference(formData: FormData) {
     preferences.view = view;
   }
 
-  if (String(formData.get("includeClosed") ?? "") === "true") {
-    preferences.includeClosed = "true";
-  }
-
   return preferences;
 }
 

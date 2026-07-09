@@ -274,10 +274,6 @@ export function TicketFilters({
       formData.set("view", active.view);
     }
 
-    if (active.includeClosed) {
-      formData.set("includeClosed", "true");
-    }
-
     return formData;
   }
 
@@ -378,17 +374,6 @@ export function TicketFilters({
           onChange={(values) => updateMultiFilter("assignee", values)}
         />
       </div>
-      <label className="flex h-9 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm text-zinc-700 shadow-xs">
-        <input
-          type="checkbox"
-          checked={active.includeClosed}
-          onChange={(event) =>
-            updateFilter("includeClosed", event.target.checked ? "true" : "")
-          }
-          className="size-4"
-        />
-        <span className="whitespace-nowrap">Show closed tickets</span>
-      </label>
       {hasFilters ? (
         <Button
           type="button"

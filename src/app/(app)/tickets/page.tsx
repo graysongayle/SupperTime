@@ -81,7 +81,6 @@ const savedPreferenceKeys = [
   "assignee",
   "sort",
   "view",
-  "includeClosed",
 ] as const;
 
 const activeAgingStatuses = new Set<TicketStatusValue>([
@@ -165,10 +164,6 @@ function normalizeSavedPreferenceValue(value: unknown) {
 
   if (source.view === "mine" || source.view === "unassigned") {
     preference.view = source.view;
-  }
-
-  if (source.includeClosed === "true") {
-    preference.includeClosed = "true";
   }
 
   return preference;

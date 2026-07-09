@@ -298,6 +298,31 @@ export function TicketBulkTable({
     });
   }
 
+  function getTicketDisplayData(ticket: TicketBulkTableTicket) {
+    const assigneeName =
+      ticket.assignedTo?.name ?? ticket.assignedTo?.email ?? "Unassigned";
+    const customerName = ticket.customer.name ?? ticket.customer.email;
+    const latestCustomerMessage = ticket.messages.find(
+      (message) => message.authorType === MessageAuthorType.CUSTOMER,
+    );
+    const latestAgentMessage = ticket.messages.find(
+      (message) => message.authorType === MessageAuthorType.AGENT,
+    );
+    const agingState = getTicketAgingState({
+      createdAt: ticket.createdAt,
+      hasAgentReply: ticket._count.messages > 0,
+      latestAgentMessageAt: latestAgentMessage?.createdAt ?? null,
+      latestCustomerMessageAt: latestCustomerMessage?.createdAt ?? null,
+      status: ticket.status,
+    });
+
+    return {
+      agingState,
+      assigneeName,
+      customerName,
+    };
+  }
+
   return (
     <>
       {canSelectTickets && selectedCount > 0 ? (
@@ -372,7 +397,87 @@ export function TicketBulkTable({
           </div>
         </div>
       ) : null}
-      <div className="min-w-0 overflow-x-auto">
+      <div className="divide-y divide-zinc-200 md:hidden">
+        {displayTickets.map((ticket) => {
+          const { agingState, customerName } = getTicketDisplayData(ticket);
+
+          return (
+            <div key={ticket.id} className="flex min-w-0 gap-3 px-3 py-3">
+              {canSelectTickets ? (
+                <div className="pt-1">
+                  <input
+                    aria-label={`Select ticket #${ticket.number}`}
+                    checked={selectedSet.has(ticket.id)}
+                    type="checkbox"
+                    onChange={(event) =>
+                      setTicketSelected(ticket.id, event.target.checked)
+                    }
+                  />
+                </div>
+              ) : null}
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex min-w-0 items-center gap-2">
+                  <Link
+                    href={`/tickets/${ticket.id}`}
+                    className="shrink-0 text-xs font-medium text-muted-foreground hover:text-zinc-950 hover:underline"
+                  >
+                    #{ticket.number}
+                  </Link>
+                  {ticket._count.attachments > 0 ? (
+                    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                      <Paperclip className="size-3" />
+                      {ticket._count.attachments}
+                    </span>
+                  ) : null}
+                </div>
+                <Link
+                  href={`/tickets/${ticket.id}`}
+                  className="block break-words text-base font-semibold leading-snug text-zinc-950 hover:underline [overflow-wrap:anywhere]"
+                >
+                  {ticket.subject}
+                </Link>
+                <div className="mt-1 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
+                  {customerName}
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <Badge
+                    variant="outline"
+                    className={statusStyles[ticket.status]}
+                  >
+                    {statusLabels[ticket.status]}
+                  </Badge>
+                  <span className={priorityStyles[ticket.priority]}>
+                    {priorityLabels[ticket.priority]}
+                  </span>
+                  <span>
+                    Customer{" "}
+                    {formatOptionalRelativeTime(ticket.lastCustomerMessageAt)}
+                  </span>
+                  <span>Update {formatRelativeTime(ticket.updatedAt)}</span>
+                </div>
+                {agingState ? (
+                  <div className="mt-2">
+                    <Badge
+                      variant="outline"
+                      className={getTicketAgingClass(agingState.severity)}
+                    >
+                      {agingState.label} · {agingState.ageLabel}
+                    </Badge>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+        {displayTickets.length === 0 ? (
+          <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+            {hasFilters
+              ? "No tickets match the current filters."
+              : "No tickets yet. Run pnpm db:seed to add sample data."}
+          </div>
+        ) : null}
+      </div>
+      <div className="hidden min-w-0 overflow-x-auto md:block">
         <Table className="min-w-full table-fixed">
           <TableHeader className="bg-zinc-50">
             <TableRow>
@@ -411,28 +516,12 @@ export function TicketBulkTable({
           </TableHeader>
           <TableBody>
             {displayTickets.map((ticket) => {
-              const assigneeName =
-                ticket.assignedTo?.name ??
-                ticket.assignedTo?.email ??
-                "Unassigned";
-              const customerName = ticket.customer.name ?? ticket.customer.email;
-              const latestCustomerMessage = ticket.messages.find(
-                (message) => message.authorType === MessageAuthorType.CUSTOMER,
-              );
-              const latestAgentMessage = ticket.messages.find(
-                (message) => message.authorType === MessageAuthorType.AGENT,
-              );
-              const agingState = getTicketAgingState({
-                createdAt: ticket.createdAt,
-                hasAgentReply: ticket._count.messages > 0,
-                latestAgentMessageAt: latestAgentMessage?.createdAt ?? null,
-                latestCustomerMessageAt: latestCustomerMessage?.createdAt ?? null,
-                status: ticket.status,
-              });
+              const { agingState, assigneeName, customerName } =
+                getTicketDisplayData(ticket);
 
               return (
                 <TableRow key={ticket.id} className="hover:bg-zinc-50/80">
-              {canSelectTickets ? (
+                  {canSelectTickets ? (
                     <TableCell className="text-center">
                       <input
                         aria-label={`Select ticket #${ticket.number}`}
@@ -463,17 +552,6 @@ export function TicketBulkTable({
                         </Link>
                         <div className="mt-1 break-words text-xs text-muted-foreground [overflow-wrap:anywhere] lg:hidden">
                           {customerName}
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground md:hidden">
-                          <Badge
-                            variant="outline"
-                            className={statusStyles[ticket.status]}
-                          >
-                            {statusLabels[ticket.status]}
-                          </Badge>
-                          <span className={priorityStyles[ticket.priority]}>
-                            {priorityLabels[ticket.priority]}
-                          </span>
                         </div>
                       </div>
                       {ticket._count.attachments > 0 ? (

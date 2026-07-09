@@ -6,9 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
-  Eye,
   MessageSquareText,
-  MoreHorizontal,
   Paperclip,
 } from "lucide-react";
 
@@ -20,21 +18,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   MessageAuthorType,
   MessageVisibility,
@@ -506,18 +489,22 @@ function MessageBody({
   message: TimelineMessage;
   viewMode: "formatted" | "plain";
 }) {
-  const sanitizedHtml = useSanitizedEmailHtml(message.bodyHtml, {
-    simplify: true,
-  });
+  const sanitizedHtml = useSanitizedEmailHtml(message.bodyHtml);
   const plainBody = normalizeMessageBody(message.body);
   const showFormatted = viewMode === "formatted" && sanitizedHtml;
+  const iframeDocument = useMemo(
+    () => (sanitizedHtml ? buildTimelineEmailIframeDocument(sanitizedHtml) : ""),
+    [sanitizedHtml],
+  );
 
   return (
     <div className="mt-3 min-w-0">
       {showFormatted ? (
-        <div
-          className="max-w-full overflow-x-auto text-sm leading-6 text-zinc-700 [overflow-wrap:anywhere] [&_*]:max-w-full [&_a]:break-words [&_a]:text-cyan-700 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-zinc-300 [&_blockquote]:pl-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_table]:w-full [&_table]:table-fixed [&_table]:border-collapse [&_td]:break-words [&_td]:border [&_td]:border-zinc-200 [&_td]:p-2 [&_th]:break-words [&_th]:border [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:p-2 [&_ul]:list-disc [&_ul]:pl-5"
-          dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+        <iframe
+          title={`${getMessageLabel(message)} message preview`}
+          srcDoc={iframeDocument}
+          sandbox="allow-popups"
+          className="h-80 w-full rounded-lg border border-zinc-200 bg-white"
         />
       ) : (
         <p className="whitespace-pre-wrap break-words text-sm text-zinc-700 [overflow-wrap:anywhere]">
@@ -591,20 +578,7 @@ function useSanitizedEmailHtml(
   return sanitizedHtml;
 }
 
-function isSafeUrl(value: string) {
-  if (!value || value.startsWith("#") || value.startsWith("/")) {
-    return true;
-  }
-
-  try {
-    const url = new URL(value);
-    return ["http:", "https:", "mailto:"].includes(url.protocol);
-  } catch {
-    return false;
-  }
-}
-
-function buildEmailIframeDocument(html: string) {
+function buildTimelineEmailIframeDocument(html: string) {
   return `<!doctype html>
 <html>
   <head>
@@ -616,27 +590,21 @@ function buildEmailIframeDocument(html: string) {
       html, body {
         margin: 0;
         padding: 0;
-        background: #f4f4f5;
+        background: #ffffff;
         color: #18181b;
         font-family: Arial, Helvetica, sans-serif;
         font-size: 14px;
         line-height: 1.5;
       }
-      body { overflow-wrap: anywhere; }
-      .email-canvas {
-        box-sizing: border-box;
-        min-height: 100vh;
-        padding: 20px;
+      body {
+        overflow-wrap: anywhere;
       }
       .email-content {
         box-sizing: border-box;
-        max-width: 820px;
-        margin: 0 auto;
+        width: 100%;
+        min-height: 100%;
+        padding: 14px;
         overflow-x: auto;
-        border: 1px solid #e4e4e7;
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 20px;
       }
       * {
         box-sizing: border-box;
@@ -672,119 +640,22 @@ function buildEmailIframeDocument(html: string) {
     </style>
   </head>
   <body>
-    <div class="email-canvas">
-      <div class="email-content">${html}</div>
-    </div>
+    <div class="email-content">${html}</div>
   </body>
 </html>`;
 }
 
-function FormattedEmailDialog({
-  body,
-  html,
-  subject,
-  trigger,
-}: {
-  body: string;
-  html: string;
-  subject: string;
-  trigger: React.ReactNode;
-}) {
-  const sanitizedHtml = useSanitizedEmailHtml(html);
-  const plainBody = normalizeMessageBody(body);
-  const [viewMode, setViewMode] = useState<"formatted" | "plain">("formatted");
-  const showFormatted = viewMode === "formatted" && sanitizedHtml;
-  const iframeDocument = useMemo(
-    () => (sanitizedHtml ? buildEmailIframeDocument(sanitizedHtml) : ""),
-    [sanitizedHtml],
-  );
-
-  return (
-    <Dialog>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="flex max-h-[90vh] max-w-[min(1100px,calc(100vw-2rem))] flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b border-zinc-200 px-5 py-4">
-          <DialogTitle>Formatted email</DialogTitle>
-          <DialogDescription>{subject}</DialogDescription>
-        </DialogHeader>
-        <div className="flex items-center gap-2 border-b border-zinc-200 px-5 py-3">
-          <Button
-            type="button"
-            variant={viewMode === "formatted" ? "default" : "outline"}
-            size="sm"
-            disabled={!sanitizedHtml}
-            onClick={() => setViewMode("formatted")}
-          >
-            Formatted
-          </Button>
-          <Button
-            type="button"
-            variant={viewMode === "plain" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setViewMode("plain")}
-          >
-            Plain text
-          </Button>
-        </div>
-        <div className="min-h-0 overflow-y-auto p-5">
-          {showFormatted ? (
-            <iframe
-              title={subject}
-              srcDoc={iframeDocument}
-              sandbox="allow-popups"
-              className="h-[70vh] w-full rounded-lg border border-zinc-200 bg-zinc-100"
-            />
-          ) : (
-            <pre className="max-w-full whitespace-pre-wrap break-words rounded-lg border border-zinc-200 bg-zinc-50 p-4 font-sans text-sm leading-6 text-zinc-800 [overflow-wrap:anywhere]">
-              {plainBody || "No message body."}
-            </pre>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function MessageActions({ message }: { message: TimelineMessage }) {
-  const hasActions = Boolean(message.bodyHtml);
-
-  if (!hasActions) {
-    return null;
+function isSafeUrl(value: string) {
+  if (!value || value.startsWith("#") || value.startsWith("/")) {
+    return true;
   }
 
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Message actions"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <MoreHorizontal className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-        {message.bodyHtml ? (
-          <FormattedEmailDialog
-            body={message.body}
-            html={message.bodyHtml}
-            subject={`${getMessageLabel(message)} from ${getMessageAuthor(
-              message,
-            )}`}
-            trigger={
-              <DropdownMenuItem onSelect={(event) => event.preventDefault()}>
-                <Eye className="size-4" />
-                View formatted
-              </DropdownMenuItem>
-            }
-          />
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+  try {
+    const url = new URL(value);
+    return ["http:", "https:", "mailto:"].includes(url.protocol);
+  } catch {
+    return false;
+  }
 }
 
 export function TicketTimeline({
@@ -952,7 +823,6 @@ export function TicketTimeline({
                   <span className="truncate text-xs text-muted-foreground">
                     {formatDate(message.createdAt)}
                   </span>
-                  <MessageActions message={message} />
                 </span>
               </div>
 
