@@ -21,20 +21,20 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import {
   MessageAuthorType,
   MessageVisibility,
@@ -499,25 +499,74 @@ function simplifyEmailHtml(html: string) {
   return document.body.innerHTML;
 }
 
-function MessageBody({ message }: { message: TimelineMessage }) {
+function MessageBody({
+  message,
+  viewMode,
+}: {
+  message: TimelineMessage;
+  viewMode: "formatted" | "plain";
+}) {
+  const sanitizedHtml = useSanitizedEmailHtml(message.bodyHtml, {
+    simplify: true,
+  });
+  const plainBody = normalizeMessageBody(message.body);
+  const showFormatted = viewMode === "formatted" && sanitizedHtml;
+
+  return (
+    <div className="mt-3 min-w-0">
+      {showFormatted ? (
+        <div
+          className="max-w-full overflow-x-auto text-sm leading-6 text-zinc-700 [overflow-wrap:anywhere] [&_*]:max-w-full [&_a]:break-words [&_a]:text-cyan-700 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-zinc-300 [&_blockquote]:pl-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_table]:w-full [&_table]:table-fixed [&_table]:border-collapse [&_td]:break-words [&_td]:border [&_td]:border-zinc-200 [&_td]:p-2 [&_th]:break-words [&_th]:border [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:p-2 [&_ul]:list-disc [&_ul]:pl-5"
+          dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+        />
+      ) : (
+        <p className="whitespace-pre-wrap break-words text-sm text-zinc-700 [overflow-wrap:anywhere]">
+          {plainBody || "No message body."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function MessageViewToggle({
+  message,
+  onChange,
+  value,
+}: {
+  message: TimelineMessage;
+  onChange: (value: "formatted" | "plain") => void;
+  value: "formatted" | "plain";
+}) {
   const sanitizedHtml = useSanitizedEmailHtml(message.bodyHtml, {
     simplify: true,
   });
   const plainBody = normalizeMessageBody(message.body);
 
-  if (sanitizedHtml) {
-    return (
-      <div
-        className="mt-3 max-w-full overflow-x-auto text-sm leading-6 text-zinc-700 [overflow-wrap:anywhere] [&_*]:max-w-full [&_a]:break-words [&_a]:text-cyan-700 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-zinc-300 [&_blockquote]:pl-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_table]:w-full [&_table]:table-fixed [&_table]:border-collapse [&_td]:break-words [&_td]:border [&_td]:border-zinc-200 [&_td]:p-2 [&_th]:break-words [&_th]:border [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:p-2 [&_ul]:list-disc [&_ul]:pl-5"
-        dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-      />
-    );
+  if (!sanitizedHtml || !plainBody) {
+    return null;
   }
 
   return (
-    <p className="mt-3 whitespace-pre-wrap break-words text-sm text-zinc-700 [overflow-wrap:anywhere]">
-      {plainBody || "No message body."}
-    </p>
+    <span className="flex shrink-0 items-center gap-1 rounded-md border border-zinc-200 bg-white p-0.5">
+      <Button
+        type="button"
+        variant={value === "formatted" ? "default" : "ghost"}
+        size="sm"
+        className="h-7 px-2 text-xs"
+        onClick={() => onChange("formatted")}
+      >
+        Formatted
+      </Button>
+      <Button
+        type="button"
+        variant={value === "plain" ? "default" : "ghost"}
+        size="sm"
+        className="h-7 px-2 text-xs"
+        onClick={() => onChange("plain")}
+      >
+        Plain text
+      </Button>
+    </span>
   );
 }
 
@@ -555,7 +604,82 @@ function isSafeUrl(value: string) {
   }
 }
 
-function FormattedEmailSheet({
+function buildEmailIframeDocument(html: string) {
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <base target="_blank">
+    <style>
+      :root { color-scheme: light; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #f4f4f5;
+        color: #18181b;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      body { overflow-wrap: anywhere; }
+      .email-canvas {
+        box-sizing: border-box;
+        min-height: 100vh;
+        padding: 20px;
+      }
+      .email-content {
+        box-sizing: border-box;
+        max-width: 820px;
+        margin: 0 auto;
+        overflow-x: auto;
+        border: 1px solid #e4e4e7;
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 20px;
+      }
+      * {
+        box-sizing: border-box;
+        max-width: 100%;
+      }
+      a {
+        color: #0e7490;
+        text-decoration: underline;
+        overflow-wrap: anywhere;
+      }
+      blockquote {
+        margin: 12px 0;
+        border-left: 2px solid #d4d4d8;
+        padding-left: 12px;
+        color: #52525b;
+      }
+      img, iframe, object, embed, video, audio, svg, canvas {
+        display: none !important;
+      }
+      table {
+        max-width: 100%;
+        border-collapse: collapse;
+      }
+      td, th {
+        overflow-wrap: anywhere;
+        vertical-align: top;
+      }
+      pre {
+        max-width: 100%;
+        overflow-x: auto;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-canvas">
+      <div class="email-content">${html}</div>
+    </div>
+  </body>
+</html>`;
+}
+
+function FormattedEmailDialog({
   body,
   html,
   subject,
@@ -570,16 +694,20 @@ function FormattedEmailSheet({
   const plainBody = normalizeMessageBody(body);
   const [viewMode, setViewMode] = useState<"formatted" | "plain">("formatted");
   const showFormatted = viewMode === "formatted" && sanitizedHtml;
+  const iframeDocument = useMemo(
+    () => (sanitizedHtml ? buildEmailIframeDocument(sanitizedHtml) : ""),
+    [sanitizedHtml],
+  );
 
   return (
-    <Sheet>
-      <SheetTrigger asChild>{trigger}</SheetTrigger>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-3xl">
-        <SheetHeader className="border-b border-zinc-200">
-          <SheetTitle>Formatted email</SheetTitle>
-          <SheetDescription>{subject}</SheetDescription>
-        </SheetHeader>
-        <div className="mx-4 flex items-center gap-2 border-b border-zinc-200 pb-3">
+    <Dialog>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent className="flex max-h-[90vh] max-w-[min(1100px,calc(100vw-2rem))] flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="border-b border-zinc-200 px-5 py-4">
+          <DialogTitle>Formatted email</DialogTitle>
+          <DialogDescription>{subject}</DialogDescription>
+        </DialogHeader>
+        <div className="flex items-center gap-2 border-b border-zinc-200 px-5 py-3">
           <Button
             type="button"
             variant={viewMode === "formatted" ? "default" : "outline"}
@@ -598,18 +726,22 @@ function FormattedEmailSheet({
             Plain text
           </Button>
         </div>
-        {showFormatted ? (
-          <div
-            className="mx-4 mb-4 max-w-full overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 text-sm leading-6 text-zinc-800 [overflow-wrap:anywhere] [&_*]:static [&_*]:float-none [&_*]:max-w-full [&_*]:min-w-0 [&_*]:tracking-normal [&_a]:break-words [&_a]:text-cyan-700 [&_a]:underline [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-zinc-300 [&_blockquote]:pl-3 [&_br+br]:hidden [&_code]:rounded [&_code]:bg-zinc-100 [&_code]:px-1 [&_div]:my-1 [&_h1]:my-3 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:my-3 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:my-2 [&_h3]:text-base [&_h3]:font-semibold [&_hr]:my-4 [&_hr]:border-zinc-200 [&_li]:my-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-zinc-100 [&_pre]:p-3 [&_span]:leading-[inherit] [&_table]:my-3 [&_table]:max-w-full [&_table]:border-collapse [&_table]:text-sm [&_td]:break-words [&_td]:align-top [&_td]:border [&_td]:border-zinc-200 [&_td]:p-2 [&_th]:break-words [&_th]:border [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:p-2 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-5"
-            dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-          />
-        ) : (
-          <pre className="mx-4 mb-4 max-w-full whitespace-pre-wrap break-words rounded-lg border border-zinc-200 bg-zinc-50 p-4 font-sans text-sm leading-6 text-zinc-800 [overflow-wrap:anywhere]">
-            {plainBody || "No message body."}
-          </pre>
-        )}
-      </SheetContent>
-    </Sheet>
+        <div className="min-h-0 overflow-y-auto p-5">
+          {showFormatted ? (
+            <iframe
+              title={subject}
+              srcDoc={iframeDocument}
+              sandbox="allow-popups"
+              className="h-[70vh] w-full rounded-lg border border-zinc-200 bg-zinc-100"
+            />
+          ) : (
+            <pre className="max-w-full whitespace-pre-wrap break-words rounded-lg border border-zinc-200 bg-zinc-50 p-4 font-sans text-sm leading-6 text-zinc-800 [overflow-wrap:anywhere]">
+              {plainBody || "No message body."}
+            </pre>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -636,7 +768,7 @@ function MessageActions({ message }: { message: TimelineMessage }) {
       <DropdownMenuContent align="end" className="w-48">
         <DropdownMenuLabel>Actions</DropdownMenuLabel>
         {message.bodyHtml ? (
-          <FormattedEmailSheet
+          <FormattedEmailDialog
             body={message.body}
             html={message.bodyHtml}
             subject={`${getMessageLabel(message)} from ${getMessageAuthor(
@@ -661,6 +793,9 @@ export function TicketTimeline({
   participants,
 }: TicketTimelineProps) {
   const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
+  const [messageViewModes, setMessageViewModes] = useState<
+    Record<string, "formatted" | "plain">
+  >({});
   const descriptionId = "__ticket_description__";
   const displayDescription =
     normalizeMessageBody(description) &&
@@ -690,6 +825,16 @@ export function TicketTimeline({
 
   function toggleAll() {
     setCollapsedIds(allCollapsed ? [] : timelineItemIds);
+  }
+
+  function setMessageViewMode(
+    messageId: string,
+    viewMode: "formatted" | "plain",
+  ) {
+    setMessageViewModes((current) => ({
+      ...current,
+      [messageId]: viewMode,
+    }));
   }
 
   const descriptionCollapsed = collapsedIds.includes(descriptionId);
@@ -756,6 +901,7 @@ export function TicketTimeline({
 
         {messages.map((message, index) => {
           const isCollapsed = collapsedIds.includes(message.id);
+          const messageViewMode = messageViewModes[message.id] ?? "formatted";
 
           return (
             <div
@@ -794,6 +940,15 @@ export function TicketTimeline({
                   </span>
                 </button>
                 <span className="flex min-w-0 items-center gap-2">
+                  {!isCollapsed ? (
+                    <MessageViewToggle
+                      message={message}
+                      value={messageViewMode}
+                      onChange={(value) =>
+                        setMessageViewMode(message.id, value)
+                      }
+                    />
+                  ) : null}
                   <span className="truncate text-xs text-muted-foreground">
                     {formatDate(message.createdAt)}
                   </span>
@@ -811,7 +966,10 @@ export function TicketTimeline({
                     message={message}
                     participants={participants}
                   />
-                  <MessageBody message={message} />
+                  <MessageBody
+                    message={message}
+                    viewMode={messageViewMode}
+                  />
                   <MessageAttachments attachments={message.attachments} />
                 </div>
               )}

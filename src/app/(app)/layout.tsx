@@ -110,7 +110,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   }
 
   const [
-    inboxCount,
+    openTicketCount,
     assignedToMeCount,
     unassignedCount,
     pendingCount,
@@ -162,7 +162,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           <AppSidebar
             canManageSupportForms={canManageSupportForms}
             counts={{
-              inbox: inboxCount,
+              openTickets: openTicketCount,
               assignedToMe: assignedToMeCount,
               unassigned: unassignedCount,
               pending: pendingCount,

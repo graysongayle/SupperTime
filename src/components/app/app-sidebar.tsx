@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/sidebar"
 
 type SidebarCount = {
-  inbox: number
+  openTickets: number
   assignedToMe: number
   unassigned: number
   pending: number
@@ -143,11 +143,11 @@ export function AppSidebar({
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarNavButton
-                href="/tickets"
+                href="/tickets?status=OPEN"
                 icon={Inbox}
-                title="Inbox"
-                badge={counts.inbox}
-                active={isActiveHref(pathname, search, "/tickets")}
+                title="Open tickets"
+                badge={counts.openTickets}
+                active={isActiveHref(pathname, search, "/tickets?status=OPEN")}
               />
               <SidebarNavButton
                 href="/tickets?view=mine"
@@ -168,13 +168,6 @@ export function AppSidebar({
                 )}
               />
               <SidebarNavButton
-                href="/tickets?status=PENDING"
-                icon={Clock3}
-                title="Pending"
-                badge={counts.pending}
-                active={isActiveHref(pathname, search, "/tickets?status=PENDING")}
-              />
-              <SidebarNavButton
                 href="/tickets?priority=URGENT"
                 icon={AlertTriangle}
                 title="Urgent"
@@ -184,6 +177,27 @@ export function AppSidebar({
                   search,
                   "/tickets?priority=URGENT",
                 )}
+              />
+              <SidebarNavButton
+                href="/tickets?status=PENDING"
+                icon={Clock3}
+                title="Waiting on other"
+                badge={counts.pending}
+                active={isActiveHref(pathname, search, "/tickets?status=PENDING")}
+              />
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Records</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarNavButton
+                href="/customers"
+                icon={UsersRound}
+                title="Customers"
+                active={pathname.startsWith("/customers")}
               />
               <SidebarNavButton
                 href="/tickets?status=RESOLVED"
@@ -201,23 +215,17 @@ export function AppSidebar({
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>Records</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarNavButton
-                href="/customers"
-                icon={UsersRound}
-                title="Customers"
-                active={pathname.startsWith("/customers")}
-              />
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
           <SidebarGroupLabel>Admin</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
+              {canManageSupportForms ? (
+                <SidebarNavButton
+                  href="/support-forms"
+                  icon={Code2}
+                  title="Support forms"
+                  active={pathname.startsWith("/support-forms")}
+                />
+              ) : null}
               {isSuperAdmin ? (
                 <>
                   <SidebarNavButton
@@ -234,14 +242,14 @@ export function AppSidebar({
                   />
                 </>
               ) : null}
-              {canManageSupportForms ? (
-                <SidebarNavButton
-                  href="/support-forms"
-                  icon={Code2}
-                  title="Support forms"
-                  active={pathname.startsWith("/support-forms")}
-                />
-              ) : null}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Help</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
               <SidebarNavButton
                 href="/help-center"
                 icon={LifeBuoy}
