@@ -154,6 +154,17 @@ export function extractTicketReplyToken(value: string) {
   };
 }
 
+function renderTemplate(
+  template: string,
+  values: Record<string, string | number>,
+) {
+  return Object.entries(values).reduce(
+    (result, [key, value]) =>
+      result.replaceAll(`{${key}}`, String(value)),
+    template,
+  );
+}
+
 export function normalizeMessageId(value: string | null | undefined) {
   return value?.trim().replace(/^<|>$/g, "") || null;
 }
@@ -174,6 +185,16 @@ export function textToHtml(text: string) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/\n/g, "<br>");
+}
+
+export function buildCustomerConfirmationSubject(ticketNumber: number) {
+  const template =
+    process.env.SUPPORT_CUSTOMER_CONFIRMATION_SUBJECT?.trim() ||
+    "We received your support request #{ticketNumber}";
+
+  return renderTemplate(template, {
+    ticketNumber,
+  });
 }
 
 export async function sendSupportEmail({
@@ -244,12 +265,20 @@ export function buildCustomerConfirmationText(
   ticketNumber: number,
   ticketSubject: string,
 ) {
-  return [
-    "Thanks for contacting PsychData Support.",
-    "",
-    `We received your request and created ticket #${ticketNumber}.`,
-    `Subject: ${ticketSubject}`,
-    "",
-    "A support team member will review it and reply as soon as possible.",
-  ].join("\n");
+  const template =
+    process.env.SUPPORT_CUSTOMER_CONFIRMATION_TEXT?.trim() ||
+    [
+      "Thanks for contacting PsychData Support.",
+      "",
+      `We received your request and created ticket #${ticketNumber}.`,
+      `Subject: ${ticketSubject}`,
+      "",
+      "A support team member will review it and reply as soon as possible.",
+    ].join("\n");
+
+  return renderTemplate(template, {
+    supportName: getSupportSender().name,
+    ticketNumber,
+    ticketSubject,
+  });
 }

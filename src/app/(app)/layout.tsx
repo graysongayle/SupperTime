@@ -130,6 +130,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     prisma.ticket.count({
       where: {
         assignedToId: null,
+        status: {
+          notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED],
+        },
       },
     }),
     prisma.ticket.count({
@@ -140,6 +143,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     prisma.ticket.count({
       where: {
         priority: TicketPriority.URGENT,
+        status: {
+          not: TicketStatus.CLOSED,
+        },
       },
     }),
     prisma.ticket.count({

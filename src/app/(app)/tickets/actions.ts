@@ -26,6 +26,7 @@ import {
 import {
   buildTicketUrl,
   buildCustomerConfirmationText,
+  buildCustomerConfirmationSubject,
   buildTicketReplyAddress,
   createEmailReplyToken,
   getAutomatedReplyHeaders,
@@ -1294,7 +1295,7 @@ async function sendCustomerConfirmation(
       replyTo: emailReplyToken
         ? buildTicketReplyAddress(ticketId, emailReplyToken)
         : null,
-      subject: `We received your support request #${ticketNumber}`,
+      subject: buildCustomerConfirmationSubject(ticketNumber),
       textBody: buildCustomerConfirmationText(ticketNumber, ticketSubject),
       to: customerEmail,
     });
