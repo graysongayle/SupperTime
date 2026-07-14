@@ -838,11 +838,17 @@ export async function addPublicReply(formData: FormData) {
 export async function forwardTicket(formData: FormData) {
   const actor = await requireTicketUser();
   const ticketId = requiredString(formData, "ticketId");
-  const to = requiredString(formData, "to");
+  const toRecipients = parseEmailList(requiredString(formData, "to"));
   const note = optionalString(formData, "note");
   const mode = requiredString(formData, "mode");
   const subject =
     optionalString(formData, "subject") ?? "Forwarded support ticket";
+
+  if (toRecipients.length === 0) {
+    throw new Error("Add at least one recipient email address.");
+  }
+
+  toRecipients.forEach(assertValidEmail);
 
   if (!validForwardModes.has(mode)) {
     throw new Error("Invalid forward mode.");
@@ -891,7 +897,7 @@ export async function forwardTicket(formData: FormData) {
     mode,
     ticketId: ticket.id,
     ticketNumber: ticket.number,
-    to,
+    to: toRecipients,
   });
 
   const textBody = buildForwardedTicketBody({
@@ -941,14 +947,14 @@ export async function forwardTicket(formData: FormData) {
     replyTo: buildTicketReplyAddress(ticket.id, emailReplyToken),
     subject,
     textBody,
-    to,
+    to: toRecipients.join(", "),
   });
 
   if (result.skipped) {
     console.warn(`${forwardLogPrefix} skipped ticket forward`, {
       reason: result.reason,
       ticketId: ticket.id,
-      to,
+      to: toRecipients,
     });
 
     throw new Error(result.reason);
@@ -957,15 +963,17 @@ export async function forwardTicket(formData: FormData) {
   console.info(`${forwardLogPrefix} Postmark accepted ticket forward`, {
     messageId: result.messageId,
     ticketId: ticket.id,
-    to,
+    to: toRecipients,
   });
+
+  const recipientList = toRecipients.join(", ");
 
   await prisma.$transaction(async (tx) => {
     await tx.ticketMessage.create({
       data: {
         ticketId: ticket.id,
         body: [
-          `Forwarded ticket to ${to}.`,
+          `Forwarded ticket to ${recipientList}.`,
           "",
           `Mode: ${modeLabel}`,
           note ? ["", "Note:", note].join("\n") : null,
@@ -977,7 +985,7 @@ export async function forwardTicket(formData: FormData) {
         agentId: actor.id,
         emailMessageId: result.messageId,
         emailFrom: actor.name ? `${actor.name} <${actor.email}>` : actor.email,
-        emailTo: to,
+        emailTo: recipientList,
       },
     });
 
@@ -997,12 +1005,12 @@ export async function forwardTicket(formData: FormData) {
   console.info(`${forwardLogPrefix} recorded internal forward note`, {
     messageId: result.messageId,
     ticketId: ticket.id,
-    to,
+    to: toRecipients,
   });
 
   return {
     ok: true,
-    message: `Ticket forwarded to ${to}.`,
+    message: `Ticket forwarded to ${recipientList}.`,
   };
 }
 

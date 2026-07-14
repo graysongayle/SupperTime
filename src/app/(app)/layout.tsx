@@ -15,7 +15,14 @@ import {
 } from "@/components/ui/card";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { TicketPriority, TicketStatus, UserRole } from "@/generated/prisma/enums";
+import { Prisma } from "@/generated/prisma/client";
+import {
+  TicketPriority,
+  TicketStatus,
+  UserRole,
+  type TicketPriority as TicketPriorityValue,
+  type TicketStatus as TicketStatusValue,
+} from "@/generated/prisma/enums";
 import { getCurrentAppUser } from "@/lib/current-app-user";
 import { prisma } from "@/lib/prisma";
 
@@ -34,6 +41,22 @@ const roleStyles: Record<string, string> = {
   AGENT: "border-zinc-200 bg-zinc-50 text-zinc-700",
   GUEST: "border-amber-200 bg-amber-50 text-amber-800",
 };
+const ticketPreferencePageKey = "tickets";
+const activeTicketStatuses = [
+  TicketStatus.OPEN,
+  TicketStatus.PENDING,
+  TicketStatus.WAITING_ON_CUSTOMER,
+  TicketStatus.WAITING_ON_THIRD_PARTY,
+] as const;
+const waitingTicketStatuses = [
+  TicketStatus.PENDING,
+  TicketStatus.WAITING_ON_CUSTOMER,
+  TicketStatus.WAITING_ON_THIRD_PARTY,
+] as const;
+const validStatuses = new Set<TicketStatusValue>(Object.values(TicketStatus));
+const validPriorities = new Set<TicketPriorityValue>(
+  Object.values(TicketPriority),
+);
 
 function getInitials(name: string, email: string) {
   const source = name !== "Guest" ? name : email;
@@ -43,6 +66,104 @@ function getInitials(name: string, email: string) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeEnumValues<T extends string>(
+  value: string | undefined,
+  validValues: Set<T>,
+) {
+  if (!value) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((item) => item.trim().toUpperCase() as T)
+        .filter((item) => validValues.has(item)),
+    ),
+  );
+}
+
+function normalizeSavedTicketPreference(value: unknown) {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const preference: Partial<{
+    priority: string;
+    status: string;
+    view: string;
+  }> = {};
+  const statuses = normalizeEnumValues<TicketStatusValue>(
+    typeof value.status === "string" ? value.status : undefined,
+    validStatuses,
+  );
+  const priorities = normalizeEnumValues<TicketPriorityValue>(
+    typeof value.priority === "string" ? value.priority : undefined,
+    validPriorities,
+  );
+
+  if (statuses.length > 0) {
+    preference.status = statuses.join(",");
+  }
+
+  if (priorities.length > 0) {
+    preference.priority = priorities.join(",");
+  }
+
+  if (value.view === "mine" || value.view === "unassigned") {
+    preference.view = value.view;
+  }
+
+  return preference;
+}
+
+function getSavedTicketPreferenceForView(
+  value: unknown,
+  viewKey: "mine" | "unassigned",
+) {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  if (isRecord(value.views)) {
+    return normalizeSavedTicketPreference(value.views[viewKey]);
+  }
+
+  const legacyPreference = normalizeSavedTicketPreference(value);
+  return legacyPreference.view === viewKey ? legacyPreference : {};
+}
+
+function buildViewCountWhere({
+  assignedToId,
+  savedPreference,
+}: {
+  assignedToId: string | null;
+  savedPreference: ReturnType<typeof normalizeSavedTicketPreference>;
+}): Prisma.TicketWhereInput {
+  const statuses = normalizeEnumValues<TicketStatusValue>(
+    savedPreference.status,
+    validStatuses,
+  );
+  const priorities = normalizeEnumValues<TicketPriorityValue>(
+    savedPreference.priority,
+    validPriorities,
+  );
+
+  return {
+    assignedToId,
+    priority: priorities.length > 0 ? { in: priorities } : undefined,
+    status:
+      statuses.length > 0
+        ? { in: statuses }
+        : { notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED] },
+  };
 }
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
@@ -109,6 +230,29 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
+  if (!appUser) {
+    throw new Error("Authenticated app user is required.");
+  }
+
+  const savedTicketPreference = await prisma.userPagePreference.findUnique({
+    where: {
+      userId_pageKey: {
+        userId: appUser.id,
+        pageKey: ticketPreferencePageKey,
+      },
+    },
+    select: {
+      preferences: true,
+    },
+  });
+  const assignedToMePreference = getSavedTicketPreferenceForView(
+    savedTicketPreference?.preferences,
+    "mine",
+  );
+  const unassignedPreference = getSavedTicketPreferenceForView(
+    savedTicketPreference?.preferences,
+    "unassigned",
+  );
   const [
     allTicketCount,
     activeTicketCount,
@@ -121,39 +265,26 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     prisma.ticket.count({
       where: {
         status: {
-          in: [
-            TicketStatus.OPEN,
-            TicketStatus.PENDING,
-            TicketStatus.WAITING_ON_CUSTOMER,
-            TicketStatus.WAITING_ON_THIRD_PARTY,
-          ],
+          in: [...activeTicketStatuses],
         },
       },
     }),
     prisma.ticket.count({
-      where: {
-        assignedToId: appUser?.id ?? "",
-        status: {
-          notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED],
-        },
-      },
+      where: buildViewCountWhere({
+        assignedToId: appUser.id,
+        savedPreference: assignedToMePreference,
+      }),
     }),
     prisma.ticket.count({
-      where: {
+      where: buildViewCountWhere({
         assignedToId: null,
-        status: {
-          notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED],
-        },
-      },
+        savedPreference: unassignedPreference,
+      }),
     }),
     prisma.ticket.count({
       where: {
         status: {
-          in: [
-            TicketStatus.PENDING,
-            TicketStatus.WAITING_ON_CUSTOMER,
-            TicketStatus.WAITING_ON_THIRD_PARTY,
-          ],
+          in: [...waitingTicketStatuses],
         },
       },
     }),
@@ -161,12 +292,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       where: {
         priority: TicketPriority.URGENT,
         status: {
-          in: [
-            TicketStatus.OPEN,
-            TicketStatus.PENDING,
-            TicketStatus.WAITING_ON_CUSTOMER,
-            TicketStatus.WAITING_ON_THIRD_PARTY,
-          ],
+          in: [...activeTicketStatuses],
         },
       },
     }),

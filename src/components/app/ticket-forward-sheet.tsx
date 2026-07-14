@@ -94,10 +94,14 @@ export function TicketForwardSheet({
             <input
               name="to"
               type="email"
+              multiple
               required
-              placeholder="name@example.com"
+              placeholder="name@example.com, teammate@example.com"
               className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm shadow-xs"
             />
+            <span className="block text-xs font-normal text-muted-foreground">
+              Separate multiple recipients with commas.
+            </span>
           </label>
           <label className="space-y-2 text-sm font-medium">
             Subject
