@@ -110,21 +110,32 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   }
 
   const [
-    openTicketCount,
+    allTicketCount,
+    activeTicketCount,
     assignedToMeCount,
     unassignedCount,
-    pendingCount,
+    waitingCount,
     urgentCount,
-    resolvedCount,
   ] = await Promise.all([
+    prisma.ticket.count(),
     prisma.ticket.count({
       where: {
-        status: TicketStatus.OPEN,
+        status: {
+          in: [
+            TicketStatus.OPEN,
+            TicketStatus.PENDING,
+            TicketStatus.WAITING_ON_CUSTOMER,
+            TicketStatus.WAITING_ON_THIRD_PARTY,
+          ],
+        },
       },
     }),
     prisma.ticket.count({
       where: {
         assignedToId: appUser?.id ?? "",
+        status: {
+          notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED],
+        },
       },
     }),
     prisma.ticket.count({
@@ -137,20 +148,26 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     }),
     prisma.ticket.count({
       where: {
-        status: TicketStatus.PENDING,
+        status: {
+          in: [
+            TicketStatus.PENDING,
+            TicketStatus.WAITING_ON_CUSTOMER,
+            TicketStatus.WAITING_ON_THIRD_PARTY,
+          ],
+        },
       },
     }),
     prisma.ticket.count({
       where: {
         priority: TicketPriority.URGENT,
         status: {
-          not: TicketStatus.CLOSED,
+          in: [
+            TicketStatus.OPEN,
+            TicketStatus.PENDING,
+            TicketStatus.WAITING_ON_CUSTOMER,
+            TicketStatus.WAITING_ON_THIRD_PARTY,
+          ],
         },
-      },
-    }),
-    prisma.ticket.count({
-      where: {
-        status: TicketStatus.RESOLVED,
       },
     }),
   ]);
@@ -162,12 +179,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           <AppSidebar
             canManageSupportForms={canManageSupportForms}
             counts={{
-              openTickets: openTicketCount,
+              allTickets: allTicketCount,
+              activeTickets: activeTicketCount,
               assignedToMe: assignedToMeCount,
               unassigned: unassignedCount,
-              pending: pendingCount,
+              waiting: waitingCount,
               urgent: urgentCount,
-              resolved: resolvedCount,
             }}
             initials={initials}
             isSuperAdmin={viewer.appRole === UserRole.SUPER_ADMIN}

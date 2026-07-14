@@ -48,6 +48,7 @@ const validTicketSorts = new Set([
   "received_asc",
 ]);
 const validTicketViews = new Set(["mine", "unassigned"]);
+const ticketPreferenceViewKeys = ["all", "mine", "unassigned"] as const;
 const statusLabels: Record<TicketStatusValue, string> = {
   [TicketStatus.OPEN]: "Open",
   [TicketStatus.PENDING]: "Waiting on Other",
@@ -146,6 +147,55 @@ function normalizeTicketPreference(formData: FormData) {
   return preferences;
 }
 
+function getTicketPreferenceViewKey(view: string | null) {
+  return view && validTicketViews.has(view)
+    ? (view as "mine" | "unassigned")
+    : "all";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasPreferenceValues(preferences: Record<string, string>) {
+  return Object.keys(preferences).length > 0;
+}
+
+function normalizeStoredTicketPreference(value: unknown) {
+  const source = isRecord(value) ? value : {};
+  const sourceViews = isRecord(source.views) ? source.views : null;
+  const views: Record<string, Record<string, string>> = {};
+
+  ticketPreferenceViewKeys.forEach((key) => {
+    const preference = sourceViews?.[key];
+
+    if (isRecord(preference)) {
+      views[key] = Object.fromEntries(
+        Object.entries(preference).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      );
+    } else {
+      views[key] = {};
+    }
+  });
+
+  if (!sourceViews && isRecord(value)) {
+    const legacyPreference = Object.fromEntries(
+      Object.entries(value).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    );
+    const legacyKey = getTicketPreferenceViewKey(legacyPreference.view ?? null);
+    views[legacyKey] = legacyPreference;
+  }
+
+  return {
+    version: 2,
+    views,
+  };
+}
+
 function parseEmailList(value: string | null) {
   if (!value) {
     return [];
@@ -170,6 +220,23 @@ function formatActor(actor: { email: string; name: string | null }) {
 export async function saveTicketViewPreference(formData: FormData) {
   const actor = await requireTicketUser();
   const preferences = normalizeTicketPreference(formData);
+  const viewKey = getTicketPreferenceViewKey(preferences.view ?? null);
+  const existingPreference = await prisma.userPagePreference.findUnique({
+    where: {
+      userId_pageKey: {
+        userId: actor.id,
+        pageKey: ticketPreferencePageKey,
+      },
+    },
+    select: {
+      preferences: true,
+    },
+  });
+  const storedPreferences = normalizeStoredTicketPreference(
+    existingPreference?.preferences,
+  );
+
+  storedPreferences.views[viewKey] = preferences;
 
   await prisma.userPagePreference.upsert({
     where: {
@@ -181,10 +248,10 @@ export async function saveTicketViewPreference(formData: FormData) {
     create: {
       userId: actor.id,
       pageKey: ticketPreferencePageKey,
-      preferences,
+      preferences: storedPreferences,
     },
     update: {
-      preferences,
+      preferences: storedPreferences,
     },
   });
 
@@ -196,15 +263,64 @@ export async function saveTicketViewPreference(formData: FormData) {
   };
 }
 
-export async function clearTicketViewPreference() {
+export async function clearTicketViewPreference(formData?: FormData) {
   const actor = await requireTicketUser();
-
-  await prisma.userPagePreference.deleteMany({
+  const viewKey = getTicketPreferenceViewKey(
+    optionalString(formData ?? new FormData(), "view"),
+  );
+  const existingPreference = await prisma.userPagePreference.findUnique({
     where: {
-      userId: actor.id,
-      pageKey: ticketPreferencePageKey,
+      userId_pageKey: {
+        userId: actor.id,
+        pageKey: ticketPreferencePageKey,
+      },
+    },
+    select: {
+      preferences: true,
     },
   });
+
+  if (!existingPreference) {
+    revalidatePath("/tickets");
+
+    return {
+      ok: true,
+      message: "Your saved ticket list default was cleared.",
+    };
+  }
+
+  const storedPreferences = normalizeStoredTicketPreference(
+    existingPreference.preferences,
+  );
+
+  storedPreferences.views[viewKey] = {};
+
+  const hasRemainingPreferences = ticketPreferenceViewKeys.some((key) =>
+    hasPreferenceValues(storedPreferences.views[key]),
+  );
+
+  if (hasRemainingPreferences) {
+    await prisma.userPagePreference.update({
+      where: {
+        userId_pageKey: {
+          userId: actor.id,
+          pageKey: ticketPreferencePageKey,
+        },
+      },
+      data: {
+        preferences: storedPreferences,
+      },
+    });
+  } else {
+    await prisma.userPagePreference.delete({
+      where: {
+        userId_pageKey: {
+          userId: actor.id,
+          pageKey: ticketPreferencePageKey,
+        },
+      },
+    });
+  }
 
   revalidatePath("/tickets");
 
@@ -220,6 +336,149 @@ function formatNullableUser(user: { email: string; name: string | null } | null)
   }
 
   return user.name ? `${user.name} <${user.email}>` : user.email;
+}
+
+function extractMentionHandles(body: string) {
+  const handles = new Set<string>();
+  const mentionPattern = /(^|[^\w.+-])@([a-zA-Z0-9][a-zA-Z0-9._+-]{0,63})\b/g;
+
+  for (const match of body.matchAll(mentionPattern)) {
+    handles.add(match[2].toLowerCase());
+  }
+
+  return Array.from(handles);
+}
+
+function mentionAliasesForUser(user: { email: string; name: string | null }) {
+  const aliases = new Set<string>();
+  const emailLocalPart = user.email.split("@")[0]?.toLowerCase();
+
+  if (emailLocalPart) {
+    aliases.add(emailLocalPart);
+
+    emailLocalPart
+      .split(/[+._-]+/)
+      .filter(Boolean)
+      .forEach((part) => aliases.add(part));
+  }
+
+  if (user.name) {
+    const normalizedName = user.name.toLowerCase().trim();
+
+    if (normalizedName) {
+      aliases.add(normalizedName.replace(/\s+/g, "."));
+      aliases.add(normalizedName.replace(/[^a-z0-9]+/g, ""));
+    }
+
+    normalizedName
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean)
+      .forEach((part) => aliases.add(part));
+  }
+
+  return aliases;
+}
+
+async function resolveMentionedUsers(body: string, actorId: string) {
+  const handles = extractMentionHandles(body);
+
+  if (handles.length === 0) {
+    return [];
+  }
+
+  const handleSet = new Set(handles);
+  const users = await prisma.user.findMany({
+    where: {
+      id: {
+        not: actorId,
+      },
+      isActive: true,
+      role: {
+        not: UserRole.GUEST,
+      },
+    },
+    select: {
+      email: true,
+      id: true,
+      name: true,
+    },
+  });
+
+  return users.filter((user) => {
+    const aliases = mentionAliasesForUser(user);
+    return Array.from(handleSet).some((handle) => aliases.has(handle));
+  });
+}
+
+async function sendInternalMentionNotification({
+  actorEmail,
+  actorName,
+  mentionedUserEmail,
+  mentionedUserName,
+  noteBody,
+  ticketId,
+  ticketNumber,
+  ticketSubject,
+}: {
+  actorEmail: string;
+  actorName: string | null;
+  mentionedUserEmail: string;
+  mentionedUserName: string | null;
+  noteBody: string;
+  ticketId: string;
+  ticketNumber: number;
+  ticketSubject: string;
+}) {
+  const ticketUrl = buildTicketUrl(ticketId);
+  const actorLabel = actorName ? `${actorName} <${actorEmail}>` : actorEmail;
+  const mentionedUserLabel = mentionedUserName ?? mentionedUserEmail;
+
+  try {
+    const result = await sendSupportEmail({
+      headers: [
+        {
+          Name: "X-Suppertime-Notification",
+          Value: "internal-note-mention",
+        },
+        {
+          Name: "X-Suppertime-Ticket-ID",
+          Value: ticketId,
+        },
+      ],
+      metadata: {
+        notification: "internal-note-mention",
+        ticketId,
+        ticketNumber: String(ticketNumber),
+      },
+      subject: `You were mentioned on ticket #${ticketNumber}: ${ticketSubject}`,
+      textBody: [
+        `Hi ${mentionedUserLabel},`,
+        "",
+        `${actorLabel} mentioned you in an internal note on ticket #${ticketNumber}.`,
+        "",
+        `Subject: ${ticketSubject}`,
+        `Ticket link: ${ticketUrl}`,
+        "",
+        "Internal note:",
+        noteBody,
+      ].join("\n"),
+      to: mentionedUserEmail,
+    });
+
+    if (result.skipped) {
+      await recordSystemNote(
+        ticketId,
+        `Mention notification to ${mentionedUserEmail} was skipped: ${result.reason}`,
+      );
+    }
+  } catch (error) {
+    await recordSystemNote(
+      ticketId,
+      `Mention notification to ${mentionedUserEmail} failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`,
+    );
+  }
 }
 
 async function cleanupStoredAttachmentKeys(storageKeys: string[]) {
@@ -333,24 +592,48 @@ export async function addInternalNote(formData: FormData) {
   const ticketId = requiredString(formData, "ticketId");
   const body = requiredString(formData, "body");
 
-  await prisma.ticketMessage.create({
-    data: {
-      ticketId,
-      body,
-      authorType: MessageAuthorType.AGENT,
-      visibility: MessageVisibility.INTERNAL,
-      agentId: actor.id,
-    },
+  const ticket = await prisma.$transaction(async (tx) => {
+    await tx.ticketMessage.create({
+      data: {
+        ticketId,
+        body,
+        authorType: MessageAuthorType.AGENT,
+        visibility: MessageVisibility.INTERNAL,
+        agentId: actor.id,
+      },
+    });
+
+    return tx.ticket.update({
+      where: {
+        id: ticketId,
+      },
+      data: {
+        updatedAt: new Date(),
+      },
+      select: {
+        id: true,
+        number: true,
+        subject: true,
+      },
+    });
   });
 
-  await prisma.ticket.update({
-    where: {
-      id: ticketId,
-    },
-    data: {
-      updatedAt: new Date(),
-    },
-  });
+  const mentionedUsers = await resolveMentionedUsers(body, actor.id);
+
+  await Promise.all(
+    mentionedUsers.map((mentionedUser) =>
+      sendInternalMentionNotification({
+        actorEmail: actor.email,
+        actorName: actor.name,
+        mentionedUserEmail: mentionedUser.email,
+        mentionedUserName: mentionedUser.name,
+        noteBody: body,
+        ticketId: ticket.id,
+        ticketNumber: ticket.number,
+        ticketSubject: ticket.subject,
+      }),
+    ),
+  );
 
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/tickets");

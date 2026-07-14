@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -71,22 +70,28 @@ type TicketSearchParams = {
   sort?: string;
   view?: string;
   includeClosed?: string;
+  prefs?: string;
   page?: string;
 };
 
 const pageSize = 25;
-const savedPreferenceKeys = [
-  "status",
-  "priority",
-  "assignee",
-  "sort",
-  "view",
-] as const;
+const ticketPreferenceViewKeys = ["all", "mine", "unassigned"] as const;
 
 const activeAgingStatuses = new Set<TicketStatusValue>([
   TicketStatus.OPEN,
   TicketStatus.PENDING,
 ]);
+const activeTicketStatuses = [
+  TicketStatus.OPEN,
+  TicketStatus.PENDING,
+  TicketStatus.WAITING_ON_CUSTOMER,
+  TicketStatus.WAITING_ON_THIRD_PARTY,
+] as const;
+const waitingTicketStatuses = [
+  TicketStatus.PENDING,
+  TicketStatus.WAITING_ON_CUSTOMER,
+  TicketStatus.WAITING_ON_THIRD_PARTY,
+] as const;
 
 function normalizeEnumValues<T extends string>(
   value: string | undefined,
@@ -112,11 +117,27 @@ function normalizeSort(value: string | undefined): TicketSort {
     : defaultSort;
 }
 
-function hasSearchParams(searchParams: TicketSearchParams) {
-  return Object.values(searchParams).some((value) => Boolean(value));
+function hasTicketSearchParams(searchParams: TicketSearchParams) {
+  return Object.entries(searchParams).some(
+    ([key, value]) => key !== "prefs" && Boolean(value),
+  );
 }
 
-function normalizeSavedPreferenceValue(value: unknown) {
+function getTicketPreferenceViewKey(view: string | null | undefined) {
+  return view === "mine" || view === "unassigned" ? view : "all";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasPreferenceValues(preference: Partial<TicketSearchParams>) {
+  return Object.keys(preference).length > 0;
+}
+
+function normalizeSavedPreferenceValue(
+  value: unknown,
+): Partial<TicketSearchParams> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
@@ -169,18 +190,22 @@ function normalizeSavedPreferenceValue(value: unknown) {
   return preference;
 }
 
-function buildSavedPreferenceQuery(preference: Partial<TicketSearchParams>) {
-  const params = new URLSearchParams();
+function getSavedPreferenceForView(
+  value: unknown,
+  viewKey: (typeof ticketPreferenceViewKeys)[number],
+) {
+  if (!isRecord(value)) {
+    return {};
+  }
 
-  savedPreferenceKeys.forEach((key) => {
-    const value = preference[key];
+  if (isRecord(value.views)) {
+    return normalizeSavedPreferenceValue(value.views[viewKey]);
+  }
 
-    if (value) {
-      params.set(key, value);
-    }
-  });
+  const legacyPreference = normalizeSavedPreferenceValue(value);
+  const legacyViewKey = getTicketPreferenceViewKey(legacyPreference.view);
 
-  return params.toString();
+  return legacyViewKey === viewKey ? legacyPreference : {};
 }
 
 function buildTicketOrderBy(sort: TicketSort): Prisma.TicketOrderByWithRelationInput[] {
@@ -279,6 +304,15 @@ function buildTicketWhere({
 
   if (statuses.length > 0) {
     clauses.push({ status: { in: statuses } });
+  } else if (
+    !includeClosed &&
+    (view === "mine" || view === "unassigned")
+  ) {
+    clauses.push({
+      status: {
+        notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED],
+      },
+    });
   } else if (!includeClosed) {
     clauses.push({ status: { not: TicketStatus.CLOSED } });
   }
@@ -368,6 +402,18 @@ function getStatusBreakdownLabel(counts: Record<TicketStatusValue, number>) {
     .join(" · ");
 }
 
+function hasExactStatuses(
+  currentStatuses: TicketStatusValue[],
+  expectedStatuses: readonly TicketStatusValue[],
+) {
+  if (currentStatuses.length !== expectedStatuses.length) {
+    return false;
+  }
+
+  const currentSet = new Set(currentStatuses);
+  return expectedStatuses.every((status) => currentSet.has(status));
+}
+
 function isMissingPreferenceTableError(error: unknown) {
   return (
     error !== null &&
@@ -407,21 +453,38 @@ async function resolveTicketSearchParams(searchParams: TicketSearchParams) {
   const savedPreference = currentUser
     ? await getSavedTicketPreference(currentUser.id)
     : null;
+  const viewKey = getTicketPreferenceViewKey(searchParams.view);
+  const normalizedSavedPreference = getSavedPreferenceForView(
+    savedPreference?.preferences,
+    viewKey,
+  );
+  const shouldApplySavedPreference =
+    searchParams.prefs !== "off" &&
+    hasPreferenceValues(normalizedSavedPreference);
+  const hasSearchParams = hasTicketSearchParams(searchParams);
 
-  if (!hasSearchParams(searchParams) && savedPreference) {
-    const savedQuery = buildSavedPreferenceQuery(
-      normalizeSavedPreferenceValue(savedPreference.preferences),
-    );
+  let resolvedSearchParams = searchParams;
 
-    if (savedQuery) {
-      redirect(`/tickets?${savedQuery}`);
-    }
+  if (shouldApplySavedPreference && !hasSearchParams) {
+    resolvedSearchParams = {
+      ...searchParams,
+      ...normalizedSavedPreference,
+    };
+  } else if (
+    shouldApplySavedPreference &&
+    viewKey !== "all" &&
+    searchParams.view
+  ) {
+    resolvedSearchParams = {
+      ...normalizedSavedPreference,
+      ...searchParams,
+    };
   }
 
   return {
     currentUser,
-    hasSavedPreference: Boolean(savedPreference),
-    searchParams,
+    hasSavedPreference: hasPreferenceValues(normalizedSavedPreference),
+    searchParams: resolvedSearchParams,
   };
 }
 
@@ -452,6 +515,14 @@ async function getDashboardData(
       )
     : [];
   const includeClosed = searchParams.includeClosed === "true";
+  const filterStatuses =
+    statuses.length > 0
+      ? statuses
+      : view === "mine" || view === "unassigned"
+        ? [...activeTicketStatuses]
+        : includeClosed
+          ? Object.values(TicketStatus)
+          : statuses;
   const page = Math.max(1, Number(searchParams.page ?? "1") || 1);
   const where = buildTicketWhere({
     assignees,
@@ -610,6 +681,7 @@ async function getDashboardData(
   return {
     active: {
       assignees,
+      filterStatuses,
       includeClosed,
       page,
       priorities,
@@ -696,6 +768,22 @@ function getPageHeading(active: {
     };
   }
 
+  if (hasExactStatuses(active.statuses, activeTicketStatuses)) {
+    return {
+      badge: "Active queue",
+      title: "Active Tickets",
+      description: "Open tickets and tickets waiting on a customer or teammate.",
+    };
+  }
+
+  if (hasExactStatuses(active.statuses, waitingTicketStatuses)) {
+    return {
+      badge: "Waiting queue",
+      title: "Waiting on Others",
+      description: "Tickets waiting on customers, teammates, or third parties.",
+    };
+  }
+
   if (active.statuses.length > 1) {
     return {
       badge: "Status queue",
@@ -725,6 +813,14 @@ function getPageHeading(active: {
       badge: "Assigned queue",
       title: "Filtered tickets",
       description: "Tickets filtered by selected assignees.",
+    };
+  }
+
+  if (active.includeClosed) {
+    return {
+      badge: "All tickets",
+      title: "All Tickets",
+      description: "Every ticket in the system, including closed tickets.",
     };
   }
 

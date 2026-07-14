@@ -11,11 +11,11 @@ import {
 } from "lucide-react";
 
 import {
-  addInternalNote,
   addTicketTag,
   removeTicketTag,
 } from "@/app/(app)/tickets/actions";
 import { DeleteTicketForm } from "@/components/app/delete-ticket-form";
+import { InternalNoteForm } from "@/components/app/internal-note-form";
 import { TicketPropertiesForm } from "@/components/app/ticket-properties-form";
 import { TicketForwardSheet } from "@/components/app/ticket-forward-sheet";
 import { TicketReplyForm } from "@/components/app/ticket-reply-form";
@@ -29,7 +29,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
 import {
   MessageAuthorType,
   MessageVisibility,
@@ -335,20 +334,11 @@ export default async function TicketDetailPage({
               <CardTitle className="text-base">Add internal note</CardTitle>
             </CardHeader>
             <CardContent>
-              <form action={addInternalNote} className="space-y-3">
-                <input type="hidden" name="ticketId" value={ticket.id} />
-                <Textarea
-                  name="body"
-                  required
-                  rows={5}
-                  placeholder="Write a private note for the support team."
-                />
-                <div className="flex justify-end">
-                  <Button type="submit" className="bg-zinc-900 text-white hover:bg-zinc-800">
-                    Add note
-                  </Button>
-                </div>
-              </form>
+              <InternalNoteForm
+                currentUserId={viewer?.id ?? null}
+                mentionUsers={agents}
+                ticketId={ticket.id}
+              />
             </CardContent>
           </Card>
         </div>

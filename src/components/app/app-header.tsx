@@ -96,12 +96,14 @@ export function AppHeader() {
         </Breadcrumb>
       ) : isTicketList ? (
         <form action="/tickets" className="relative min-w-0 flex-1">
+          <input type="hidden" name="includeClosed" value="true" />
+          <input type="hidden" name="prefs" value="off" />
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             aria-label="Search tickets"
             name="q"
             className="h-9 max-w-xl border-zinc-200 bg-zinc-50 pl-8"
-            placeholder="Search tickets, customers, or tags"
+            placeholder="Search all tickets"
           />
         </form>
       ) : (

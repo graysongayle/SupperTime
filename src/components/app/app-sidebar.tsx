@@ -5,11 +5,11 @@ import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import {
   AlertTriangle,
-  CheckCircle2,
   Clock3,
   Code2,
   Inbox,
   LifeBuoy,
+  List,
   Settings,
   Ticket,
   UserRound,
@@ -34,12 +34,12 @@ import {
 } from "@/components/ui/sidebar"
 
 type SidebarCount = {
-  openTickets: number
+  allTickets: number
+  activeTickets: number
   assignedToMe: number
   unassigned: number
-  pending: number
+  waiting: number
   urgent: number
-  resolved: number
 }
 
 type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
@@ -68,6 +68,15 @@ function isActiveHref(pathname: string, search: string, href: string) {
   const current = `${pathname}${search ? `?${search}` : ""}`
   return current === href
 }
+
+const waitingStatusesHref =
+  "/tickets?status=PENDING,WAITING_ON_CUSTOMER,WAITING_ON_THIRD_PARTY"
+const activeTicketsHref =
+  "/tickets?status=OPEN,PENDING,WAITING_ON_CUSTOMER,WAITING_ON_THIRD_PARTY"
+const allTicketsHref =
+  "/tickets?sort=last_customer_desc&prefs=off&includeClosed=true"
+const urgentTicketsHref =
+  "/tickets?priority=URGENT&status=OPEN,PENDING,WAITING_ON_CUSTOMER,WAITING_ON_THIRD_PARTY"
 
 function SidebarNavButton({
   href,
@@ -143,11 +152,11 @@ export function AppSidebar({
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarNavButton
-                href="/tickets?status=OPEN"
+                href={activeTicketsHref}
                 icon={Inbox}
-                title="Open tickets"
-                badge={counts.openTickets}
-                active={isActiveHref(pathname, search, "/tickets?status=OPEN")}
+                title="Active tickets"
+                badge={counts.activeTickets}
+                active={isActiveHref(pathname, search, activeTicketsHref)}
               />
               <SidebarNavButton
                 href="/tickets?view=mine"
@@ -168,22 +177,25 @@ export function AppSidebar({
                 )}
               />
               <SidebarNavButton
-                href="/tickets?priority=URGENT"
+                href={urgentTicketsHref}
                 icon={AlertTriangle}
                 title="Urgent"
                 badge={counts.urgent}
-                active={isActiveHref(
-                  pathname,
-                  search,
-                  "/tickets?priority=URGENT",
-                )}
+                active={isActiveHref(pathname, search, urgentTicketsHref)}
               />
               <SidebarNavButton
-                href="/tickets?status=PENDING"
+                href={waitingStatusesHref}
                 icon={Clock3}
-                title="Waiting on other"
-                badge={counts.pending}
-                active={isActiveHref(pathname, search, "/tickets?status=PENDING")}
+                title="Waiting on others"
+                badge={counts.waiting}
+                active={isActiveHref(pathname, search, waitingStatusesHref)}
+              />
+              <SidebarNavButton
+                href={allTicketsHref}
+                icon={List}
+                title="All tickets"
+                badge={counts.allTickets}
+                active={isActiveHref(pathname, search, allTicketsHref)}
               />
             </SidebarMenu>
           </SidebarGroupContent>
@@ -198,17 +210,6 @@ export function AppSidebar({
                 icon={UsersRound}
                 title="Customers"
                 active={pathname.startsWith("/customers")}
-              />
-              <SidebarNavButton
-                href="/tickets?status=RESOLVED"
-                icon={CheckCircle2}
-                title="Resolved"
-                badge={counts.resolved}
-                active={isActiveHref(
-                  pathname,
-                  search,
-                  "/tickets?status=RESOLVED",
-                )}
               />
             </SidebarMenu>
           </SidebarGroupContent>

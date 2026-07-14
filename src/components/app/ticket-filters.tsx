@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown, RotateCcw, Save, Search } from "lucide-react";
 
 import {
@@ -79,16 +79,19 @@ const priorityLabels = {
 };
 const unassignedAssigneeValue = "unassigned";
 
+type TicketFilterState = {
+  assignees: string[];
+  filterStatuses: TicketStatus[];
+  includeClosed: boolean;
+  priorities: TicketPriority[];
+  q: string | null;
+  sort: string;
+  statuses: TicketStatus[];
+  view: string | null;
+};
+
 type TicketFiltersProps = {
-  active: {
-    assignees: string[];
-    includeClosed: boolean;
-    priorities: TicketPriority[];
-    q: string | null;
-    sort: string;
-    statuses: TicketStatus[];
-    view: string | null;
-  };
+  active: TicketFilterState;
   agents: Array<{
     email: string;
     id: string;
@@ -99,9 +102,7 @@ type TicketFiltersProps = {
 };
 
 type TicketSearchControlProps = {
-  active: {
-    q: string | null;
-  };
+  active: TicketFilterState;
 };
 
 type MultiSelectFilterProps<T extends string> = {
@@ -129,6 +130,40 @@ function formatSelectedLabel(
   }
 
   return `${selectedLabels.length} ${pluralLabel.toLowerCase()}`;
+}
+
+function buildActiveSearchParams(active: TicketFilterState) {
+  const params = new URLSearchParams();
+
+  if (active.q) {
+    params.set("q", active.q);
+  }
+
+  if (active.filterStatuses.length > 0) {
+    params.set("status", active.filterStatuses.join(","));
+  }
+
+  if (active.priorities.length > 0) {
+    params.set("priority", active.priorities.join(","));
+  }
+
+  if (active.assignees.length > 0) {
+    params.set("assignee", active.assignees.join(","));
+  }
+
+  if (active.sort) {
+    params.set("sort", active.sort);
+  }
+
+  if (active.view) {
+    params.set("view", active.view);
+  }
+
+  if (active.includeClosed) {
+    params.set("includeClosed", "true");
+  }
+
+  return params;
 }
 
 function MultiSelectFilter<T extends string>({
@@ -215,11 +250,10 @@ export function TicketFilters({
 }: TicketFiltersProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [isSavingPreference, startSavingPreference] = useTransition();
 
   function updateFilter(key: string, value: string) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = buildActiveSearchParams(active);
     const trimmed = value.trim();
 
     if (key === "assignee") {
@@ -248,14 +282,14 @@ export function TicketFilters({
   }
 
   function clearFilters() {
-    router.replace(`${pathname}?sort=${defaultSort}`);
+    router.replace(`${pathname}?sort=${defaultSort}&prefs=off`);
   }
 
   function buildPreferenceFormData() {
     const formData = new FormData();
 
-    if (active.statuses.length > 0) {
-      formData.set("status", active.statuses.join(","));
+    if (active.filterStatuses.length > 0) {
+      formData.set("status", active.filterStatuses.join(","));
     }
 
     if (active.priorities.length > 0) {
@@ -304,7 +338,13 @@ export function TicketFilters({
   function clearDefaultView() {
     startSavingPreference(async () => {
       try {
-        const result = await clearTicketViewPreference();
+        const formData = new FormData();
+
+        if (active.view) {
+          formData.set("view", active.view);
+        }
+
+        const result = await clearTicketViewPreference(formData);
 
         toast({
           variant: "success",
@@ -351,7 +391,7 @@ export function TicketFilters({
         label="Status"
         options={statusOptions}
         pluralLabel="Statuses"
-        selectedValues={active.statuses}
+        selectedValues={active.filterStatuses}
         onChange={(values) => updateMultiFilter("status", values)}
       />
       <MultiSelectFilter
@@ -430,7 +470,6 @@ export function TicketFilters({
 export function TicketSearchControl({ active }: TicketSearchControlProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [query, setQuery] = useState(active.q ?? "");
   const queryChanged = query.trim() !== (active.q ?? "");
 
@@ -439,7 +478,7 @@ export function TicketSearchControl({ active }: TicketSearchControlProps) {
   }, [active.q]);
 
   function submitSearch() {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = buildActiveSearchParams(active);
     const trimmed = query.trim();
 
     params.delete("page");
