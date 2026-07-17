@@ -270,6 +270,7 @@ model SupportForm {
   buttonLabel      String   @default("Support")
   accentColor      String   @default("#0f766e")
   embedMode        String   @default("floating")
+  hideOnMobile     Boolean  @default(true)
   placement        String   @default("bottom-right")
   successMessage   String   @default("Thanks. We received your request.")
   turnstileEnabled Boolean  @default(false)

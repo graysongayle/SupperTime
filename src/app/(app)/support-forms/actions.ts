@@ -29,6 +29,7 @@ function optionalStringValue(formData: FormData, key: string) {
 
 function supportFormData(formData: FormData) {
   const embedMode = stringValue(formData, "embedMode", "floating");
+  const hideOnMobile = formData.get("hideOnMobile") === "on";
   const placement = stringValue(formData, "placement", "bottom-right");
   const turnstileEnabled = formData.get("turnstileEnabled") === "on";
   const turnstileSiteKey = optionalStringValue(formData, "turnstileSiteKey");
@@ -41,6 +42,7 @@ function supportFormData(formData: FormData) {
     accentColor: stringValue(formData, "accentColor", "#0f766e").slice(0, 32),
     buttonLabel: stringValue(formData, "buttonLabel", "Support").slice(0, 80),
     embedMode: validEmbedModes.has(embedMode) ? embedMode : "floating",
+    hideOnMobile,
     intro: stringValue(
       formData,
       "intro",

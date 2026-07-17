@@ -1,0 +1,2 @@
+ALTER TABLE "SupportForm"
+ADD COLUMN "hideOnMobile" BOOLEAN NOT NULL DEFAULT true;

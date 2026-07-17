@@ -2,6 +2,13 @@ export const dynamic = "force-dynamic";
 
 const widgetScript = String.raw`
 (function () {
+  function booleanValue(value, fallback) {
+    if (value == null || value === "") return fallback;
+    if (value === true || value === "true") return true;
+    if (value === false || value === "false") return false;
+    return fallback;
+  }
+
   var script = document.currentScript;
   if (!script || script.dataset.suppertimeLoaded === "true") return;
   script.dataset.suppertimeLoaded = "true";
@@ -14,6 +21,7 @@ const widgetScript = String.raw`
     accentColor: script.dataset.accentColor || "#0f766e",
     buttonLabel: script.dataset.buttonLabel || "Support",
     embedMode: script.dataset.embedMode || scriptUrl.searchParams.get("mode") || "floating",
+    hideOnMobile: booleanValue(script.dataset.hideOnMobile || scriptUrl.searchParams.get("hideOnMobile"), true),
     intro: script.dataset.intro || "Send a message to our support team.",
     placement: script.dataset.placement || "bottom-right",
     successMessage: script.dataset.successMessage || "Thanks. We received your request.",
@@ -27,6 +35,7 @@ const widgetScript = String.raw`
     config.accentColor = remoteConfig.accentColor || config.accentColor;
     config.buttonLabel = remoteConfig.buttonLabel || config.buttonLabel;
     config.embedMode = remoteConfig.embedMode || config.embedMode;
+    config.hideOnMobile = booleanValue(remoteConfig.hideOnMobile, config.hideOnMobile);
     config.intro = remoteConfig.intro || config.intro;
     config.placement = remoteConfig.placement || config.placement;
     config.successMessage = remoteConfig.successMessage || config.successMessage;
@@ -45,6 +54,7 @@ const widgetScript = String.raw`
     ".st-support-button{position:fixed;z-index:2147483000;border:0;border-radius:999px;background:"+config.accentColor+";color:#fff;padding:12px 16px;font:600 14px system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;box-shadow:0 10px 30px rgba(15,23,42,.18);cursor:pointer}",
     ".st-support-button[data-placement='bottom-right']{right:20px;bottom:20px}",
     ".st-support-button[data-placement='bottom-left']{left:20px;bottom:20px}",
+    (config.hideOnMobile && !isInline) ? "@media (max-width: 767px){.st-support-button{display:none}}" : "",
     ".st-support-overlay{position:fixed;inset:0;z-index:2147483001;display:none;background:rgba(15,23,42,.42);padding:20px}",
     ".st-support-overlay[data-open='true']{display:flex;align-items:center;justify-content:center}",
     ".st-support-inline{width:100%;display:block}",

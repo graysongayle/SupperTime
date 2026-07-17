@@ -28,6 +28,7 @@ type SupportFormRecord = {
   accentColor: string;
   buttonLabel: string;
   embedMode: string;
+  hideOnMobile: boolean;
   id: string;
   intro: string;
   isActive: boolean;
@@ -126,6 +127,23 @@ function SupportFormFields({
           <option value="bottom-right">Bottom right</option>
           <option value="bottom-left">Bottom left</option>
         </select>
+      </label>
+      <label className="flex items-start gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm md:col-span-2">
+        <input
+          name="hideOnMobile"
+          className="mt-1"
+          type="checkbox"
+          defaultChecked={form?.hideOnMobile ?? true}
+        />
+        <span>
+          <span className="block font-medium text-zinc-900">
+            Hide floating button on mobile
+          </span>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            Keeps the floating launcher off smaller screens. Inline embeds are
+            unaffected.
+          </span>
+        </span>
       </label>
       <label className="flex min-w-0 flex-col gap-1.5 text-sm md:col-span-2">
         <span className="font-medium text-zinc-900">Success message</span>
@@ -306,6 +324,9 @@ export default async function SupportFormsPage() {
                     <Badge variant="outline">
                       {form.embedMode === "inline" ? "Inline" : "Floating"}
                     </Badge>
+                    {form.embedMode === "floating" && form.hideOnMobile ? (
+                      <Badge variant="outline">Hide on mobile</Badge>
+                    ) : null}
                     {form.turnstileEnabled ? (
                       <Badge variant="outline">CAPTCHA</Badge>
                     ) : null}

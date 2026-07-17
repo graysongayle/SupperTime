@@ -19,6 +19,7 @@ type SupportFormGeneratorProps = {
     accentColor: string;
     buttonLabel: string;
     embedMode: string;
+    hideOnMobile: boolean;
     id: string;
     intro: string;
     placement: string;
@@ -45,8 +46,8 @@ export function SupportFormGenerator({
       return `<div id="${targetId}"></div>\n<script src="${widgetUrl.toString()}" data-target="${targetId}" async defer></script>`;
     }
 
-    return `<script src="${widgetUrl.toString()}" async defer></script>`;
-  }, [appBaseUrl, form.embedMode, form.id]);
+    return `<script src="${widgetUrl.toString()}" data-hide-on-mobile="${String(form.hideOnMobile)}" async defer></script>`;
+  }, [appBaseUrl, form.embedMode, form.hideOnMobile, form.id]);
   const previewHref = `/support-form-preview/${form.id}`;
 
   async function copySnippet() {
