@@ -58,7 +58,9 @@ export default async function SupportFormPreviewPage({
             <p className="mt-2 text-sm text-muted-foreground">
               {form.embedMode === "inline"
                 ? "The form should render inside the page content below."
-                : "The widget should float above this page without affecting the surrounding layout."}
+                : form.embedMode === "external-trigger"
+                  ? "Use the preview button below to open the modal from a host-controlled trigger."
+                  : "The widget should float above this page without affecting the surrounding layout."}
             </p>
           </div>
           <div className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
@@ -73,12 +75,34 @@ export default async function SupportFormPreviewPage({
             <div id={inlineTargetId} />
           </div>
         ) : null}
+        {form.embedMode === "external-trigger" ? (
+          <div className="mt-6 rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+            <button
+              id="preview-open-support-form"
+              type="button"
+              className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-800"
+            >
+              Open support form
+            </button>
+          </div>
+        ) : null}
       </div>
       <Script
         src={widgetUrl.toString()}
         data-target={form.embedMode === "inline" ? inlineTargetId : undefined}
         strategy="afterInteractive"
       />
+      {form.embedMode === "external-trigger" ? (
+        <Script id={`support-form-preview-trigger-${formId}`} strategy="afterInteractive">
+          {`
+            document
+              .getElementById("preview-open-support-form")
+              ?.addEventListener("click", function () {
+                window.SuppertimeSupportForms?.[${JSON.stringify(formId)}]?.open();
+              });
+          `}
+        </Script>
+      ) : null}
     </main>
   );
 }

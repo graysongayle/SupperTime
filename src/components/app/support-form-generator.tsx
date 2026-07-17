@@ -39,11 +39,26 @@ export function SupportFormGenerator({
   const snippet = useMemo(() => {
     const widgetUrl = new URL(`${appBaseUrl}/api/support-form/widget.js`);
     widgetUrl.searchParams.set("form", form.id);
+    const apiExpression = `window.SuppertimeSupportForms?.[${JSON.stringify(form.id)}]?.open()`;
 
     if (form.embedMode === "inline") {
       const targetId = `suppertime-support-form-${form.id}`;
 
       return `<div id="${targetId}"></div>\n<script src="${widgetUrl.toString()}" data-target="${targetId}" async defer></script>`;
+    }
+
+    if (form.embedMode === "external-trigger") {
+      return [
+        `<button type="button" id="open-support-form">Contact support</button>`,
+        `<script src="${widgetUrl.toString()}" async defer></script>`,
+        `<script>`,
+        `  document`,
+        `    .getElementById("open-support-form")`,
+        `    ?.addEventListener("click", function () {`,
+        `      ${apiExpression};`,
+        `    });`,
+        `</script>`,
+      ].join("\n");
     }
 
     return `<script src="${widgetUrl.toString()}" data-hide-on-mobile="${String(form.hideOnMobile)}" async defer></script>`;

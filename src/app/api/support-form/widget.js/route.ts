@@ -17,6 +17,7 @@ const widgetScript = String.raw`
   var scriptUrl = new URL(script.src);
   var formId = script.dataset.formId || scriptUrl.searchParams.get("form") || "";
   var targetId = script.dataset.target || scriptUrl.searchParams.get("target") || (formId ? "suppertime-support-form-" + formId : "");
+  var registry = window.SuppertimeSupportForms || (window.SuppertimeSupportForms = {});
   var config = {
     accentColor: script.dataset.accentColor || "#0f766e",
     buttonLabel: script.dataset.buttonLabel || "Support",
@@ -45,6 +46,7 @@ const widgetScript = String.raw`
 
   function mountWidget() {
   var isInline = config.embedMode === "inline";
+  var usesExternalTrigger = config.embedMode === "external-trigger";
   var inlineTarget = targetId ? document.getElementById(targetId) : null;
 
   if (isInline && !inlineTarget) return;
@@ -54,7 +56,7 @@ const widgetScript = String.raw`
     ".st-support-button{position:fixed;z-index:2147483000;border:0;border-radius:999px;background:"+config.accentColor+";color:#fff;padding:12px 16px;font:600 14px system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;box-shadow:0 10px 30px rgba(15,23,42,.18);cursor:pointer}",
     ".st-support-button[data-placement='bottom-right']{right:20px;bottom:20px}",
     ".st-support-button[data-placement='bottom-left']{left:20px;bottom:20px}",
-    (config.hideOnMobile && !isInline) ? "@media (max-width: 767px){.st-support-button{display:none}}" : "",
+    (config.hideOnMobile && !isInline && !usesExternalTrigger) ? "@media (max-width: 767px){.st-support-button{display:none}}" : "",
     ".st-support-overlay{position:fixed;inset:0;z-index:2147483001;display:none;background:rgba(15,23,42,.42);padding:20px}",
     ".st-support-overlay[data-open='true']{display:flex;align-items:center;justify-content:center}",
     ".st-support-inline{width:100%;display:block}",
@@ -190,6 +192,10 @@ const widgetScript = String.raw`
     if (open) renderTurnstile();
   }
 
+  function isOpen() {
+    return overlay.dataset.open === "true";
+  }
+
   function showForm() {
     var form = overlay.querySelector(".st-support-form");
     var confirmation = overlay.querySelector(".st-support-confirmation");
@@ -227,6 +233,31 @@ const widgetScript = String.raw`
   overlay.querySelector(".st-support-secondary").addEventListener("click", showForm);
   overlay.addEventListener("click", function (event) {
     if (event.target === overlay) setOpen(false);
+  });
+
+  if (formId) {
+    registry[formId] = {
+      close: function () { setOpen(false); },
+      open: function () {
+        showForm();
+        setOpen(true);
+      },
+      toggle: function () {
+        if (isInline) return;
+        if (isOpen()) {
+          setOpen(false);
+          return;
+        }
+        showForm();
+        setOpen(true);
+      }
+    };
+  }
+
+  window.addEventListener("suppertime:support-form:open", function (event) {
+    if (!event.detail || event.detail.formId !== formId) return;
+    if (!registry[formId]) return;
+    registry[formId].open();
   });
 
   overlay.querySelector("form").addEventListener("submit", function (event) {
@@ -279,6 +310,8 @@ const widgetScript = String.raw`
   if (isInline) {
     inlineTarget.appendChild(overlay);
     renderTurnstile();
+  } else if (usesExternalTrigger) {
+    document.body.appendChild(overlay);
   } else {
     document.body.appendChild(button);
     document.body.appendChild(overlay);

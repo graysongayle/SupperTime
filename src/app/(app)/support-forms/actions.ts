@@ -6,7 +6,7 @@ import { requireSupportFormManager } from "@/lib/current-app-user";
 import { prisma } from "@/lib/prisma";
 
 const validPlacements = new Set(["bottom-right", "bottom-left"]);
-const validEmbedModes = new Set(["floating", "inline"]);
+const validEmbedModes = new Set(["floating", "inline", "external-trigger"]);
 
 async function requireManager() {
   const actor = await requireSupportFormManager();

@@ -115,6 +115,7 @@ function SupportFormFields({
         >
           <option value="floating">Floating button</option>
           <option value="inline">Embedded inline</option>
+          <option value="external-trigger">External trigger</option>
         </select>
       </label>
       <label className="flex min-w-0 flex-col gap-1.5 text-sm">
@@ -135,15 +136,15 @@ function SupportFormFields({
           type="checkbox"
           defaultChecked={form?.hideOnMobile ?? true}
         />
-        <span>
-          <span className="block font-medium text-zinc-900">
-            Hide floating button on mobile
+          <span>
+            <span className="block font-medium text-zinc-900">
+              Hide floating button on mobile
+            </span>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Keeps the floating launcher off smaller screens. Inline and
+              external-trigger embeds are unaffected.
+            </span>
           </span>
-          <span className="mt-1 block text-xs text-muted-foreground">
-            Keeps the floating launcher off smaller screens. Inline embeds are
-            unaffected.
-          </span>
-        </span>
       </label>
       <label className="flex min-w-0 flex-col gap-1.5 text-sm md:col-span-2">
         <span className="font-medium text-zinc-900">Success message</span>
@@ -322,7 +323,11 @@ export default async function SupportFormsPage() {
                       {form.isActive ? "Active" : "Inactive"}
                     </Badge>
                     <Badge variant="outline">
-                      {form.embedMode === "inline" ? "Inline" : "Floating"}
+                      {form.embedMode === "inline"
+                        ? "Inline"
+                        : form.embedMode === "external-trigger"
+                          ? "External trigger"
+                          : "Floating"}
                     </Badge>
                     {form.embedMode === "floating" && form.hideOnMobile ? (
                       <Badge variant="outline">Hide on mobile</Badge>
