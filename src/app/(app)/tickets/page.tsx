@@ -880,6 +880,7 @@ export default async function TicketsPage({
   const nextPageHref = buildHref(params, {
     page: String(dashboard.pagination.currentPage + 1),
   });
+  const returnHref = buildHref(params, {});
   const hasAgingConcern = dashboard.summary.needsResponseCount > 0;
 
   return (
@@ -1015,6 +1016,7 @@ export default async function TicketsPage({
           canBulkUpdateStatus={dashboard.canBulkUpdateStatus}
           hasFilters={hasFilters}
           includeClosed={dashboard.active.includeClosed}
+          returnHref={returnHref}
           tickets={dashboard.tickets}
         />
         <div className="flex flex-col gap-3 border-t border-zinc-200 px-3 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">

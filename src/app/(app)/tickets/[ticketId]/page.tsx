@@ -97,12 +97,28 @@ function formatDate(date: Date | null) {
   });
 }
 
+function getTicketsReturnHref(value: string | undefined) {
+  if (!value) {
+    return "/tickets";
+  }
+
+  if (value === "/tickets" || value.startsWith("/tickets?")) {
+    return value;
+  }
+
+  return "/tickets";
+}
+
 export default async function TicketDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ ticketId: string }>;
+  searchParams: Promise<{ from?: string }>;
 }) {
   const { ticketId } = await params;
+  const { from } = await searchParams;
+  const returnHref = getTicketsReturnHref(from);
   const [ticket, agents, tags, viewer] = await Promise.all([
     prisma.ticket.findUnique({
       where: {
@@ -240,7 +256,7 @@ export default async function TicketDetailPage({
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <Button variant="ghost" size="sm" asChild className="mb-2 -ml-2">
-            <Link href="/tickets">
+            <Link href={returnHref}>
               <ArrowLeft className="size-4" />
               Back to tickets
             </Link>

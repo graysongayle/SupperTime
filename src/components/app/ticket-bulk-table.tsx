@@ -110,6 +110,7 @@ type TicketBulkTableProps = {
   canBulkUpdateStatus: boolean;
   hasFilters: boolean;
   includeClosed: boolean;
+  returnHref: string;
   tickets: TicketBulkTableTicket[];
 };
 
@@ -159,6 +160,7 @@ export function TicketBulkTable({
   canBulkUpdateStatus,
   hasFilters,
   includeClosed,
+  returnHref,
   tickets,
 }: TicketBulkTableProps) {
   const router = useRouter();
@@ -323,6 +325,10 @@ export function TicketBulkTable({
     };
   }
 
+  function getTicketHref(ticketId: string) {
+    return `/tickets/${ticketId}?from=${encodeURIComponent(returnHref)}`;
+  }
+
   return (
     <>
       {canSelectTickets && selectedCount > 0 ? (
@@ -418,7 +424,7 @@ export function TicketBulkTable({
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex min-w-0 items-center gap-2">
                   <Link
-                    href={`/tickets/${ticket.id}`}
+                    href={getTicketHref(ticket.id)}
                     className="shrink-0 text-xs font-medium text-muted-foreground hover:text-zinc-950 hover:underline"
                   >
                     #{ticket.number}
@@ -431,7 +437,7 @@ export function TicketBulkTable({
                   ) : null}
                 </div>
                 <Link
-                  href={`/tickets/${ticket.id}`}
+                  href={getTicketHref(ticket.id)}
                   className="block break-words text-base font-semibold leading-snug text-zinc-950 hover:underline [overflow-wrap:anywhere]"
                 >
                   {ticket.subject}
@@ -535,7 +541,7 @@ export function TicketBulkTable({
                   ) : null}
                   <TableCell className="whitespace-nowrap font-medium text-zinc-500">
                     <Link
-                      href={`/tickets/${ticket.id}`}
+                      href={getTicketHref(ticket.id)}
                       className="hover:text-zinc-950 hover:underline"
                     >
                       #{ticket.number}
@@ -545,7 +551,7 @@ export function TicketBulkTable({
                     <div className="flex min-w-0 items-start gap-2">
                       <div className="min-w-0">
                         <Link
-                          href={`/tickets/${ticket.id}`}
+                          href={getTicketHref(ticket.id)}
                           className="line-clamp-2 break-words font-medium text-zinc-950 hover:underline [overflow-wrap:anywhere]"
                         >
                           {ticket.subject}
