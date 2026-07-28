@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Code2, Plus } from "lucide-react";
+import { ChevronRight, Code2, Plus } from "lucide-react";
 
 import {
   createSupportForm,
@@ -289,6 +289,76 @@ export default async function SupportFormsPage() {
         </CardContent>
       </Card>
 
+      <div className="flex flex-col gap-5">
+        {forms.map((form) => (
+          <Card
+            key={form.id}
+            className="rounded-lg border-zinc-200 bg-white shadow-sm"
+          >
+            <details className="group/form">
+              <summary className="flex cursor-pointer list-none items-start justify-between gap-3 p-6 marker:hidden [&::-webkit-details-marker]:hidden">
+                <div className="flex min-w-0 gap-3">
+                  <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-open/form:rotate-90" />
+                  <div className="min-w-0">
+                    <CardTitle className="break-words text-base [overflow-wrap:anywhere]">
+                      {form.name}
+                    </CardTitle>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <Badge variant={form.isActive ? "secondary" : "outline"}>
+                        {form.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                      <Badge variant="outline">
+                        {form.embedMode === "inline"
+                          ? "Inline"
+                          : form.embedMode === "external-trigger"
+                            ? "External trigger"
+                            : "Floating"}
+                      </Badge>
+                      {form.embedMode === "floating" && form.hideOnMobile ? (
+                        <Badge variant="outline">Hide on mobile</Badge>
+                      ) : null}
+                      {form.turnstileEnabled ? (
+                        <Badge variant="outline">CAPTCHA</Badge>
+                      ) : null}
+                      <span>{form._count.tickets} tickets</span>
+                      <span>Updated {formatDate(form.updatedAt)}</span>
+                    </div>
+                  </div>
+                </div>
+              </summary>
+              <CardContent>
+                <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.75fr)]">
+                  <form action={updateSupportForm} className="flex flex-col gap-4">
+                    <input type="hidden" name="formId" value={form.id} />
+                    <SupportFormFields form={form} />
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button type="submit">Save changes</Button>
+                    </div>
+                  </form>
+                  <div className="min-w-0">
+                    <SupportFormGenerator appBaseUrl={appBaseUrl} form={form} />
+                    <div className="mt-3 flex justify-end">
+                      <DeleteSupportFormButton
+                        formId={form.id}
+                        formName={form.name}
+                        ticketCount={form._count.tickets}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </details>
+          </Card>
+        ))}
+        {forms.length === 0 ? (
+          <Card className="rounded-lg border-zinc-200 bg-white shadow-sm">
+            <CardContent className="py-10 text-center text-sm text-muted-foreground">
+              No support forms have been created yet.
+            </CardContent>
+          </Card>
+        ) : null}
+      </div>
+
       <Card className="rounded-lg border-zinc-200 bg-white shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm">
@@ -305,73 +375,6 @@ export default async function SupportFormsPage() {
           </form>
         </CardContent>
       </Card>
-
-      <div className="flex flex-col gap-5">
-        {forms.map((form) => (
-          <Card
-            key={form.id}
-            className="rounded-lg border-zinc-200 bg-white shadow-sm"
-          >
-            <CardHeader>
-              <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div className="min-w-0">
-                  <CardTitle className="break-words text-base [overflow-wrap:anywhere]">
-                    {form.name}
-                  </CardTitle>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <Badge variant={form.isActive ? "secondary" : "outline"}>
-                      {form.isActive ? "Active" : "Inactive"}
-                    </Badge>
-                    <Badge variant="outline">
-                      {form.embedMode === "inline"
-                        ? "Inline"
-                        : form.embedMode === "external-trigger"
-                          ? "External trigger"
-                          : "Floating"}
-                    </Badge>
-                    {form.embedMode === "floating" && form.hideOnMobile ? (
-                      <Badge variant="outline">Hide on mobile</Badge>
-                    ) : null}
-                    {form.turnstileEnabled ? (
-                      <Badge variant="outline">CAPTCHA</Badge>
-                    ) : null}
-                    <span>{form._count.tickets} tickets</span>
-                    <span>Updated {formatDate(form.updatedAt)}</span>
-                  </div>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.75fr)]">
-                <form action={updateSupportForm} className="flex flex-col gap-4">
-                  <input type="hidden" name="formId" value={form.id} />
-                  <SupportFormFields form={form} />
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <Button type="submit">Save changes</Button>
-                  </div>
-                </form>
-                <div className="min-w-0">
-                  <SupportFormGenerator appBaseUrl={appBaseUrl} form={form} />
-                  <div className="mt-3 flex justify-end">
-                    <DeleteSupportFormButton
-                      formId={form.id}
-                      formName={form.name}
-                      ticketCount={form._count.tickets}
-                    />
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-        {forms.length === 0 ? (
-          <Card className="rounded-lg border-zinc-200 bg-white shadow-sm">
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              No support forms have been created yet.
-            </CardContent>
-          </Card>
-        ) : null}
-      </div>
     </>
   );
 }

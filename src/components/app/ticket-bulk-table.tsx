@@ -41,6 +41,7 @@ import {
   getTicketAgingClass,
   getTicketAgingState,
 } from "@/lib/ticket-aging";
+import { cn } from "@/lib/utils";
 
 const statusStyles: Record<TicketStatusValue, string> = {
   [TicketStatus.OPEN]: "border-teal-200 bg-teal-50 text-teal-800",
@@ -87,6 +88,7 @@ type TicketBulkTableTicket = {
   };
   createdAt: Date | string;
   id: string;
+  hasNewCustomerResponse: boolean;
   lastAgentMessageAt: Date | string | null;
   lastCustomerMessageAt: Date | string | null;
   messages: Array<{
@@ -408,7 +410,13 @@ export function TicketBulkTable({
           const { agingState, customerName } = getTicketDisplayData(ticket);
 
           return (
-            <div key={ticket.id} className="flex min-w-0 gap-3 px-3 py-3">
+            <div
+              key={ticket.id}
+              className={cn(
+                "flex min-w-0 gap-3 px-3 py-3",
+                ticket.hasNewCustomerResponse && "bg-cyan-50/60",
+              )}
+            >
               {canSelectTickets ? (
                 <div className="pt-1">
                   <input
@@ -435,10 +443,23 @@ export function TicketBulkTable({
                       {ticket._count.attachments}
                     </span>
                   ) : null}
+                  {ticket.hasNewCustomerResponse ? (
+                    <Badge
+                      variant="outline"
+                      className="border-cyan-200 bg-cyan-100 text-cyan-800"
+                    >
+                      New
+                    </Badge>
+                  ) : null}
                 </div>
                 <Link
                   href={getTicketHref(ticket.id)}
-                  className="block break-words text-base font-semibold leading-snug text-zinc-950 hover:underline [overflow-wrap:anywhere]"
+                  className={cn(
+                    "block break-words text-base leading-snug text-zinc-950 hover:underline [overflow-wrap:anywhere]",
+                    ticket.hasNewCustomerResponse
+                      ? "font-bold"
+                      : "font-semibold",
+                  )}
                 >
                   {ticket.subject}
                 </Link>
@@ -526,7 +547,14 @@ export function TicketBulkTable({
                 getTicketDisplayData(ticket);
 
               return (
-                <TableRow key={ticket.id} className="hover:bg-zinc-50/80">
+                <TableRow
+                  key={ticket.id}
+                  className={
+                    ticket.hasNewCustomerResponse
+                      ? "bg-cyan-50/60 hover:bg-cyan-50"
+                      : "hover:bg-zinc-50/80"
+                  }
+                >
                   {canSelectTickets ? (
                     <TableCell className="text-center">
                       <input
@@ -539,7 +567,14 @@ export function TicketBulkTable({
                       />
                     </TableCell>
                   ) : null}
-                  <TableCell className="whitespace-nowrap font-medium text-zinc-500">
+                  <TableCell
+                    className={cn(
+                      "whitespace-nowrap",
+                      ticket.hasNewCustomerResponse
+                        ? "font-semibold text-zinc-950"
+                        : "font-medium text-zinc-500",
+                    )}
+                  >
                     <Link
                       href={getTicketHref(ticket.id)}
                       className="hover:text-zinc-950 hover:underline"
@@ -552,7 +587,12 @@ export function TicketBulkTable({
                       <div className="min-w-0">
                         <Link
                           href={getTicketHref(ticket.id)}
-                          className="line-clamp-2 break-words font-medium text-zinc-950 hover:underline [overflow-wrap:anywhere]"
+                          className={cn(
+                            "line-clamp-2 break-words text-zinc-950 hover:underline [overflow-wrap:anywhere]",
+                            ticket.hasNewCustomerResponse
+                              ? "font-semibold"
+                              : "font-medium",
+                          )}
                         >
                           {ticket.subject}
                         </Link>
@@ -565,6 +605,14 @@ export function TicketBulkTable({
                           <Paperclip className="size-3" />
                           {ticket._count.attachments}
                         </span>
+                      ) : null}
+                      {ticket.hasNewCustomerResponse ? (
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 border-cyan-200 bg-cyan-100 text-cyan-800"
+                        >
+                          New
+                        </Badge>
                       ) : null}
                     </div>
                   </TableCell>

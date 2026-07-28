@@ -677,6 +677,15 @@ async function getDashboardData(
       oldestWaitingSince = waitingSince;
     }
   });
+  const unreadTicketIds = new Set(
+    (
+      await prisma.$queryRaw<Array<{ id: string }>>`
+        select "id"
+        from "Ticket"
+        where "customerResponseUnreadAt" is not null
+      `
+    ).map((ticket) => ticket.id),
+  );
 
   return {
     active: {
@@ -708,7 +717,10 @@ async function getDashboardData(
       statusBreakdown: getStatusBreakdownLabel(statusCounts) || "No tickets",
       totalTickets,
     },
-    tickets,
+    tickets: tickets.map((ticket) => ({
+      ...ticket,
+      hasNewCustomerResponse: unreadTicketIds.has(ticket.id),
+    })),
     pagination: {
       currentPage: page,
       pageSize,

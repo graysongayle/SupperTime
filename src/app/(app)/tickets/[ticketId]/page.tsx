@@ -135,7 +135,7 @@ export default async function TicketDetailPage({
         },
         messages: {
           orderBy: {
-            createdAt: "asc",
+            createdAt: "desc",
           },
           include: {
             agent: {
@@ -217,12 +217,24 @@ export default async function TicketDetailPage({
     notFound();
   }
 
+  await prisma.$executeRaw`
+    update "Ticket"
+    set "customerResponseUnreadAt" = null
+    where "id" = ${ticket.id}
+      and "customerResponseUnreadAt" is not null
+  `;
+
   const existingTagNames = new Set(ticket.tagLinks.map((link) => link.tag.name));
   const visibleParticipants = ticket.participants.filter(
     (participant) => !isSupportEmailAddress(participant.email),
   );
   const ccParticipants = visibleParticipants.filter(
     (participant) => participant.role === TicketParticipantRole.CC,
+  );
+  const toParticipants = visibleParticipants.filter(
+    (participant) =>
+      participant.role === TicketParticipantRole.TO &&
+      participant.email.toLowerCase() !== ticket.customer.email.toLowerCase(),
   );
   const replyRecipientName = ticket.customer.name ?? "Customer";
   const replyRecipientLabel = ticket.customer.name
@@ -236,12 +248,12 @@ export default async function TicketDetailPage({
   const publicMessages = ticket.messages.filter(
     (message) => message.visibility === MessageVisibility.PUBLIC,
   );
-  const latestCustomerMessage = [...publicMessages]
-    .reverse()
-    .find((message) => message.authorType === MessageAuthorType.CUSTOMER);
-  const latestAgentMessage = [...publicMessages]
-    .reverse()
-    .find((message) => message.authorType === MessageAuthorType.AGENT);
+  const latestCustomerMessage = publicMessages.find(
+    (message) => message.authorType === MessageAuthorType.CUSTOMER,
+  );
+  const latestAgentMessage = publicMessages.find(
+    (message) => message.authorType === MessageAuthorType.AGENT,
+  );
   const agingState = getTicketAgingState({
     createdAt: ticket.createdAt,
     hasAgentReply: Boolean(latestAgentMessage),
@@ -341,6 +353,11 @@ export default async function TicketDetailPage({
                 replyRecipientLabel={replyRecipientLabel}
                 replyRecipientName={replyRecipientName}
                 ticketId={ticket.id}
+                toParticipants={toParticipants.map((participant) => ({
+                  email: participant.email,
+                  id: participant.id,
+                  name: participant.name,
+                }))}
               />
             </CardContent>
           </Card>
@@ -383,9 +400,12 @@ export default async function TicketDetailPage({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              <div className="font-medium text-zinc-950">
+              <Link
+                href={`/customers/${ticket.customer.id}`}
+                className="font-medium text-zinc-950 hover:text-cyan-700 hover:underline"
+              >
                 {ticket.customer.name ?? "Unnamed customer"}
-              </div>
+              </Link>
               <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
                 <Mail className="size-4" />
                 <span className="min-w-0 break-words [overflow-wrap:anywhere]">

@@ -60,6 +60,10 @@ type TimelineParticipant = {
   role: TicketParticipantRole;
 };
 
+type TimelineDetailMode = "expanded" | "collapsed";
+
+const timelineDetailModeStorageKey = "suppertime.ticketTimeline.detailMode";
+
 function formatDate(value: string) {
   return new Date(value).toLocaleString("en-US", {
     month: "short",
@@ -664,13 +668,19 @@ export function TicketTimeline({
   participants,
 }: TicketTimelineProps) {
   const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
+  const [detailMode, setDetailMode] =
+    useState<TimelineDetailMode>("expanded");
+  const [hasLoadedDetailMode, setHasLoadedDetailMode] = useState(false);
   const [messageViewModes, setMessageViewModes] = useState<
     Record<string, "formatted" | "plain">
   >({});
   const descriptionId = "__ticket_description__";
   const displayDescription =
     normalizeMessageBody(description) &&
-    normalizeMessageBody(description) !== normalizeMessageBody(messages[0]?.body)
+    !messages.some(
+      (message) =>
+        normalizeMessageBody(message.body) === normalizeMessageBody(description),
+    )
       ? description
       : null;
   const timelineItemIds = useMemo(
@@ -684,6 +694,26 @@ export function TicketTimeline({
     timelineItemIds.length > 0 && collapsedIds.length === timelineItemIds.length;
   const hasCollapsed = collapsedIds.length > 0;
 
+  useEffect(() => {
+    const storedDetailMode = window.localStorage.getItem(
+      timelineDetailModeStorageKey,
+    );
+
+    if (storedDetailMode === "collapsed" || storedDetailMode === "expanded") {
+      setDetailMode(storedDetailMode);
+    }
+
+    setHasLoadedDetailMode(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasLoadedDetailMode) {
+      return;
+    }
+
+    setCollapsedIds(detailMode === "collapsed" ? timelineItemIds : []);
+  }, [detailMode, hasLoadedDetailMode, timelineItemIds]);
+
   function toggleTimelineItem(itemId: string) {
     setCollapsedIds((current) => {
       if (current.includes(itemId)) {
@@ -695,7 +725,10 @@ export function TicketTimeline({
   }
 
   function toggleAll() {
-    setCollapsedIds(allCollapsed ? [] : timelineItemIds);
+    const nextDetailMode = allCollapsed ? "expanded" : "collapsed";
+
+    setDetailMode(nextDetailMode);
+    window.localStorage.setItem(timelineDetailModeStorageKey, nextDetailMode);
   }
 
   function setMessageViewMode(

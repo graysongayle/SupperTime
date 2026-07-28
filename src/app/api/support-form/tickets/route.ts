@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return tx.ticket.create({
+    const ticket = await tx.ticket.create({
       data: {
         customerId: customer.id,
         description: body,
@@ -245,6 +245,13 @@ export async function POST(request: NextRequest) {
         subject: true,
       },
     });
+    await tx.$executeRaw`
+      update "Ticket"
+      set "customerResponseUnreadAt" = ${messageCreatedAt}
+      where "id" = ${ticket.id}
+    `;
+
+    return ticket;
   });
 
   await sendEmbeddedFormConfirmation({

@@ -22,6 +22,11 @@ type TicketReplyFormProps = {
   replyRecipientLabel: string;
   replyRecipientName: string;
   ticketId: string;
+  toParticipants: Array<{
+    email: string;
+    id: string;
+    name: string | null;
+  }>;
 };
 
 function fileKey(file: File) {
@@ -44,6 +49,7 @@ export function TicketReplyForm({
   replyRecipientLabel,
   replyRecipientName,
   ticketId,
+  toParticipants,
 }: TicketReplyFormProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -141,13 +147,46 @@ export function TicketReplyForm({
       encType="multipart/form-data"
     >
       <input type="hidden" name="ticketId" value={ticketId} />
-      <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm">
-        <div className="font-medium text-cyan-950">
-          To: {replyRecipientLabel}
+      <div className="space-y-2 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm">
+        <div>
+          <div className="font-medium text-cyan-950">To recipients</div>
+          <div className="mt-1 text-xs text-cyan-900/80">
+            This reply will be sent to {replyRecipientName}. Select additional
+            To recipients from the original thread when they should receive the
+            reply directly.
+          </div>
         </div>
-        <div className="mt-1 text-xs text-cyan-900/80">
-          This reply will be sent to {replyRecipientName}. Add CC recipients
-          below if other participants should receive it.
+        <div className="space-y-2">
+          <label className="flex items-start gap-2 text-sm text-cyan-950">
+            <input type="checkbox" checked readOnly disabled className="mt-1" />
+            <span className="min-w-0">
+              <span className="block font-medium">{replyRecipientLabel}</span>
+              <span className="block text-xs text-cyan-900/80">
+                Primary requester
+              </span>
+            </span>
+          </label>
+          {toParticipants.map((participant) => (
+            <label
+              key={participant.id}
+              className="flex items-start gap-2 text-sm text-cyan-950"
+            >
+              <input
+                type="checkbox"
+                name="toParticipantId"
+                value={participant.id}
+                className="mt-1"
+              />
+              <span className="min-w-0">
+                <span className="block font-medium">
+                  {participant.name ?? participant.email}
+                </span>
+                <span className="block break-words text-xs text-cyan-900/80">
+                  {participant.email}
+                </span>
+              </span>
+            </label>
+          ))}
         </div>
       </div>
       <Textarea
@@ -273,7 +312,7 @@ export function TicketReplyForm({
         <Button
           type="submit"
           disabled={isPending}
-          className="bg-zinc-900 text-white hover:bg-zinc-800"
+          className="bg-cyan-700 text-white hover:bg-cyan-800"
         >
           Send reply
         </Button>

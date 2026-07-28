@@ -368,6 +368,11 @@ async function appendInboundMessage({
         updatedAt: messageCreatedAt,
       },
     });
+    await tx.$executeRaw`
+      update "Ticket"
+      set "customerResponseUnreadAt" = ${messageCreatedAt}
+      where "id" = ${ticketId}
+    `;
 
     if (shouldReopen) {
       await tx.ticketStatusHistory.create({
@@ -464,6 +469,11 @@ async function createInboundTicket({
         subject: true,
       },
     });
+    await tx.$executeRaw`
+      update "Ticket"
+      set "customerResponseUnreadAt" = ${messageCreatedAt}
+      where "id" = ${ticket.id}
+    `;
 
     const message = await tx.ticketMessage.create({
       data: {

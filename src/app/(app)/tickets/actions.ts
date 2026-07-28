@@ -681,6 +681,20 @@ export async function addPublicReply(formData: FormData) {
   }
 
   const replyTo = buildTicketReplyAddress(ticket.id, emailReplyToken);
+  const primaryRecipientEmail = ticket.customer.email.toLowerCase();
+  const selectedToParticipantIds = new Set(
+    formData.getAll("toParticipantId").map((value) => String(value)),
+  );
+  const selectedToEmails = ticket.participants
+    .filter(
+      (participant) =>
+        participant.role === TicketParticipantRole.TO &&
+        selectedToParticipantIds.has(participant.id),
+    )
+    .map((participant) => participant.email.toLowerCase());
+  const toEmails = Array.from(
+    new Set([primaryRecipientEmail, ...selectedToEmails]),
+  );
   const selectedCcParticipantIds = new Set(
     formData.getAll("ccParticipantId").map((value) => String(value)),
   );
@@ -691,15 +705,23 @@ export async function addPublicReply(formData: FormData) {
         selectedCcParticipantIds.has(participant.id),
     )
     .map((participant) => participant.email.toLowerCase());
-  const additionalCcEmails = parseEmailList(optionalString(formData, "additionalCc"));
+  const additionalCcEmails = parseEmailList(
+    optionalString(formData, "additionalCc"),
+  );
+  const toEmailSet = new Set(toEmails);
   const ccEmails = Array.from(
     new Set([...selectedCcEmails, ...additionalCcEmails]),
-  ).filter((email) => email !== ticket.customer.email.toLowerCase());
+  ).filter((email) => !toEmailSet.has(email));
+
+  for (const email of toEmails) {
+    assertValidEmail(email);
+  }
 
   for (const email of ccEmails) {
     assertValidEmail(email);
   }
 
+  const toRecipients = toEmails.join(",");
   const ccRecipients = ccEmails.length > 0 ? ccEmails.join(",") : null;
   const subject = ticket.subject.startsWith("Re:")
     ? ticket.subject
@@ -736,7 +758,7 @@ export async function addPublicReply(formData: FormData) {
     replyTo,
     subject,
     textBody: body,
-    to: ticket.customer.email,
+    to: toRecipients,
   }).catch(async (error) => {
     await deleteStoredAttachments(
       storedAttachments.map((attachment) => attachment.storageKey),
@@ -759,7 +781,7 @@ export async function addPublicReply(formData: FormData) {
 
   await prisma.$transaction(async (tx) => {
     for (const email of additionalCcEmails) {
-      if (email === ticket.customer.email.toLowerCase()) {
+      if (toEmailSet.has(email)) {
         continue;
       }
 
@@ -803,7 +825,7 @@ export async function addPublicReply(formData: FormData) {
         agentId: actor.id,
         emailMessageId: result.messageId,
         emailFrom: actor.name ? `${actor.name} <${actor.email}>` : actor.email,
-        emailTo: ticket.customer.email,
+        emailTo: toRecipients,
         emailCc: ccRecipients,
         createdAt: messageCreatedAt,
       },

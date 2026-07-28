@@ -118,7 +118,7 @@ export function AppHeader() {
       )}
 
       {!isNewTicket ? (
-        <Button asChild className="bg-zinc-900 text-white hover:bg-zinc-800">
+        <Button asChild className="bg-cyan-700 text-white hover:bg-cyan-800">
           <Link href="/tickets/new">
             <MailPlus className="size-4" />
             New ticket

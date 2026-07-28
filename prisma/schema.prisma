@@ -116,8 +116,9 @@ model Ticket {
   freshdeskImportId   String?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
-  lastCustomerMessageAt DateTime?
-  lastAgentMessageAt    DateTime?
+  lastCustomerMessageAt    DateTime?
+  lastAgentMessageAt       DateTime?
+  customerResponseUnreadAt DateTime?
   resolvedAt            DateTime?
   closedAt              DateTime?
 
@@ -140,6 +141,7 @@ model Ticket {
   @@index([status, priority])
   @@index([lastCustomerMessageAt])
   @@index([lastAgentMessageAt])
+  @@index([customerResponseUnreadAt])
   @@index([createdAt])
   @@index([updatedAt])
   @@index([customerId])

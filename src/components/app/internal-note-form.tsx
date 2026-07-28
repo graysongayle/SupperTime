@@ -252,7 +252,7 @@ export function InternalNoteForm({
       <div className="flex justify-end">
         <Button
           type="submit"
-          className="bg-zinc-900 text-white hover:bg-zinc-800"
+          className="bg-cyan-700 text-white hover:bg-cyan-800"
           disabled={isPending}
         >
           Add note
