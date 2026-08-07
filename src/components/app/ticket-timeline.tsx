@@ -244,7 +244,8 @@ function isReplyableMessage(message: TimelineMessage) {
 function getTranslationUrl(message: TimelineMessage) {
   if (
     message.visibility !== MessageVisibility.PUBLIC ||
-    message.authorType !== MessageAuthorType.CUSTOMER
+    (message.authorType !== MessageAuthorType.CUSTOMER &&
+      message.authorType !== MessageAuthorType.AGENT)
   ) {
     return null;
   }
