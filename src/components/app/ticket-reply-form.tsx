@@ -10,6 +10,7 @@ import {
   maxAttachmentCount,
 } from "@/lib/attachment-limits";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 
@@ -19,8 +20,10 @@ type TicketReplyFormProps = {
     id: string;
     name: string | null;
   }>;
+  defaultCcEmails?: string[];
+  defaultToEmails?: string[];
+  onSent?: () => void;
   replyRecipientLabel: string;
-  replyRecipientName: string;
   ticketId: string;
   toParticipants: Array<{
     email: string;
@@ -44,10 +47,48 @@ function normalizedImageFile(file: File) {
   });
 }
 
+function RecipientCheckbox({
+  defaultChecked,
+  description,
+  label,
+  name,
+  value,
+}: {
+  defaultChecked?: boolean;
+  description?: string;
+  label: string;
+  name: string;
+  value: string;
+}) {
+  return (
+    <label className="flex min-w-0 items-start gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm">
+      <input
+        type="checkbox"
+        name={name}
+        value={value}
+        defaultChecked={defaultChecked}
+        className="mt-1"
+      />
+      <span className="min-w-0">
+        <span className="block break-words font-medium text-zinc-950 [overflow-wrap:anywhere]">
+          {label}
+        </span>
+        {description ? (
+          <span className="block break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">
+            {description}
+          </span>
+        ) : null}
+      </span>
+    </label>
+  );
+}
+
 export function TicketReplyForm({
   ccParticipants,
+  defaultCcEmails = [],
+  defaultToEmails = [],
+  onSent,
   replyRecipientLabel,
-  replyRecipientName,
   ticketId,
   toParticipants,
 }: TicketReplyFormProps) {
@@ -126,8 +167,9 @@ export function TicketReplyForm({
         toast({
           variant: "success",
           title: "Reply sent",
-          description: "Your response was sent to the customer.",
+          description: "Your response was sent to the selected recipients.",
         });
+        onSent?.();
         router.refresh();
       } catch (error) {
         toast({
@@ -143,67 +185,130 @@ export function TicketReplyForm({
   return (
     <form
       onSubmit={submit}
-      className="space-y-3"
+      className="flex flex-col gap-3"
       encType="multipart/form-data"
     >
       <input type="hidden" name="ticketId" value={ticketId} />
-      <div className="space-y-2 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm">
-        <div>
-          <div className="font-medium text-cyan-950">To recipients</div>
-          <div className="mt-1 text-xs text-cyan-900/80">
-            This reply will be sent to {replyRecipientName}. Select additional
-            To recipients from the original thread when they should receive the
-            reply directly.
+      <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2.5">
+        <div className="text-sm font-medium text-zinc-950">Recipients</div>
+        <div className="grid min-w-0 gap-2 sm:grid-cols-[32px_minmax(0,1fr)]">
+          <div className="pt-2 text-xs font-medium uppercase tracking-normal text-muted-foreground">
+            To
           </div>
-        </div>
-        <div className="space-y-2">
-          <label className="flex items-start gap-2 text-sm text-cyan-950">
-            <input type="checkbox" checked readOnly disabled className="mt-1" />
-            <span className="min-w-0">
-              <span className="block font-medium">{replyRecipientLabel}</span>
-              <span className="block text-xs text-cyan-900/80">
-                Primary requester
-              </span>
-            </span>
-          </label>
-          {toParticipants.map((participant) => (
-            <label
-              key={participant.id}
-              className="flex items-start gap-2 text-sm text-cyan-950"
-            >
-              <input
-                type="checkbox"
+          <div className="flex flex-col gap-2">
+            {defaultToEmails.length > 0 ? (
+              defaultToEmails.map((email) => (
+                <RecipientCheckbox
+                  key={email}
+                  defaultChecked
+                  label={email}
+                  name="toEmail"
+                  value={email}
+                />
+              ))
+            ) : (
+              <div className="flex min-w-0 items-start gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm">
+                <input type="checkbox" checked readOnly disabled className="mt-1" />
+                <span className="min-w-0">
+                  <span className="block break-words font-medium text-zinc-950 [overflow-wrap:anywhere]">
+                    {replyRecipientLabel}
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Primary requester
+                  </span>
+                </span>
+              </div>
+            )}
+            {toParticipants.map((participant) => (
+              <RecipientCheckbox
+                key={participant.id}
+                description={participant.email}
+                label={participant.name ?? participant.email}
                 name="toParticipantId"
                 value={participant.id}
-                className="mt-1"
               />
-              <span className="min-w-0">
-                <span className="block font-medium">
-                  {participant.name ?? participant.email}
-                </span>
-                <span className="block break-words text-xs text-cyan-900/80">
-                  {participant.email}
-                </span>
-              </span>
-            </label>
-          ))}
+            ))}
+          </div>
+        </div>
+        <div className="grid min-w-0 gap-2 sm:grid-cols-[32px_minmax(0,1fr)]">
+          <div className="pt-2 text-xs font-medium uppercase tracking-normal text-muted-foreground">
+            Cc
+          </div>
+          <div className="flex flex-col gap-2">
+            {defaultCcEmails.map((email) => (
+              <RecipientCheckbox
+                key={email}
+                defaultChecked
+                label={email}
+                name="ccEmail"
+                value={email}
+              />
+            ))}
+            {ccParticipants.map((participant) => (
+              <RecipientCheckbox
+                key={participant.id}
+                description={participant.email}
+                label={participant.name ?? participant.email}
+                name="ccParticipantId"
+                value={participant.id}
+              />
+            ))}
+            {defaultCcEmails.length === 0 && ccParticipants.length === 0 ? (
+              <div className="rounded-md border border-dashed border-zinc-200 bg-white px-2 py-1.5 text-sm text-muted-foreground">
+                No Cc recipients are selected.
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
-      <Textarea
-        name="body"
-        required
-        rows={6}
-        placeholder="Write a customer-facing reply."
-        onPaste={handlePaste}
-      />
-      <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2.5">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <label
-            htmlFor="replyAttachments"
+            htmlFor="additionalCc"
             className="text-sm font-medium text-zinc-950"
           >
-            Attach files
+            Add Cc addresses
           </label>
+          <div className="text-xs text-muted-foreground">
+            Separate multiple addresses with commas, semicolons, or spaces.
+          </div>
+        </div>
+        <Input
+          id="additionalCc"
+          name="additionalCc"
+          type="text"
+          placeholder="name@example.com, other@example.com"
+          className="bg-white"
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <label htmlFor="replyBody" className="text-sm font-medium text-zinc-950">
+          Message
+        </label>
+        <Textarea
+          id="replyBody"
+          name="body"
+          required
+          rows={6}
+          placeholder="Write a customer-facing reply."
+          onPaste={handlePaste}
+        />
+      </div>
+      <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="replyAttachments"
+              className="text-sm font-medium text-zinc-950"
+            >
+              Attachments
+            </label>
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Clipboard />
+              Paste screenshots into the message, or attach up to{" "}
+              {maxAttachmentCount} files and {formatAttachmentLimit()} total.
+            </p>
+          </div>
           <Button
             type="button"
             variant="outline"
@@ -211,7 +316,7 @@ export function TicketReplyForm({
             className="bg-white"
             onClick={() => fileInputRef.current?.click()}
           >
-            <Paperclip className="size-4" />
+            <Paperclip data-icon="inline-start" />
             Choose files
           </Button>
         </div>
@@ -224,19 +329,14 @@ export function TicketReplyForm({
           className="sr-only"
           onChange={handleFileInputChange}
         />
-        <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Clipboard className="size-3.5" />
-          Paste screenshots into the reply box, or attach up to{" "}
-          {maxAttachmentCount} files and {formatAttachmentLimit()} total.
-        </p>
         {attachments.length > 0 ? (
-          <div className="mt-3 flex flex-col gap-2">
+          <div className="flex flex-col gap-2">
             {attachments.map((attachment, index) => (
               <div
                 key={fileKey(attachment)}
                 className="flex min-w-0 items-center gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm"
               >
-                <Paperclip className="size-4 shrink-0 text-muted-foreground" />
+                <Paperclip className="shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
                 <Button
                   type="button"
@@ -245,68 +345,12 @@ export function TicketReplyForm({
                   aria-label={`Remove ${attachment.name}`}
                   onClick={() => removeAttachment(index)}
                 >
-                  <X className="size-4" />
+                  <X />
                 </Button>
               </div>
             ))}
           </div>
         ) : null}
-      </div>
-      <div className="space-y-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-        <div>
-          <div className="text-sm font-medium text-zinc-950">CC recipients</div>
-          <div className="text-xs text-muted-foreground">
-            Select existing CC participants or add email addresses for this
-            reply.
-          </div>
-        </div>
-        {ccParticipants.length > 0 ? (
-          <div className="space-y-2">
-            {ccParticipants.map((participant) => (
-              <label
-                key={participant.id}
-                className="flex items-start gap-2 text-sm text-zinc-700"
-              >
-                <input
-                  type="checkbox"
-                  name="ccParticipantId"
-                  value={participant.id}
-                  className="mt-1"
-                />
-                <span className="min-w-0">
-                  <span className="block font-medium text-zinc-900">
-                    {participant.name ?? participant.email}
-                  </span>
-                  <span className="block break-words text-xs text-muted-foreground">
-                    {participant.email}
-                  </span>
-                </span>
-              </label>
-            ))}
-          </div>
-        ) : (
-          <div className="text-sm text-muted-foreground">
-            No CC participants are currently listed on this ticket.
-          </div>
-        )}
-        <div className="space-y-1">
-          <label
-            htmlFor="additionalCc"
-            className="text-sm font-medium text-zinc-900"
-          >
-            Add CC addresses
-          </label>
-          <input
-            id="additionalCc"
-            name="additionalCc"
-            type="text"
-            placeholder="name@example.com, other@example.com"
-            className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm shadow-xs outline-none focus:border-cyan-600"
-          />
-          <p className="text-xs text-muted-foreground">
-            Separate multiple addresses with commas, semicolons, or spaces.
-          </p>
-        </div>
       </div>
       <div className="flex justify-end">
         <Button

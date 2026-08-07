@@ -18,7 +18,6 @@ import { DeleteTicketForm } from "@/components/app/delete-ticket-form";
 import { InternalNoteForm } from "@/components/app/internal-note-form";
 import { TicketPropertiesForm } from "@/components/app/ticket-properties-form";
 import { TicketForwardSheet } from "@/components/app/ticket-forward-sheet";
-import { TicketReplyForm } from "@/components/app/ticket-reply-form";
 import { TicketTimeline } from "@/components/app/ticket-timeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -228,18 +227,6 @@ export default async function TicketDetailPage({
   const visibleParticipants = ticket.participants.filter(
     (participant) => !isSupportEmailAddress(participant.email),
   );
-  const ccParticipants = visibleParticipants.filter(
-    (participant) => participant.role === TicketParticipantRole.CC,
-  );
-  const toParticipants = visibleParticipants.filter(
-    (participant) =>
-      participant.role === TicketParticipantRole.TO &&
-      participant.email.toLowerCase() !== ticket.customer.email.toLowerCase(),
-  );
-  const replyRecipientName = ticket.customer.name ?? "Customer";
-  const replyRecipientLabel = ticket.customer.name
-    ? `${ticket.customer.name} <${ticket.customer.email}>`
-    : ticket.customer.email;
   const canPermanentlyDelete =
     (viewer?.role === UserRole.SUPER_ADMIN ||
       viewer?.role === UserRole.MANAGER ||
@@ -337,30 +324,9 @@ export default async function TicketDetailPage({
               name: participant.name,
               role: participant.role,
             }))}
+            supportEmail={supportSender.email}
+            ticketId={ticket.id}
           />
-
-          <Card className="min-w-0 rounded-lg border-zinc-200 bg-white shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base">Reply by email</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TicketReplyForm
-                ccParticipants={ccParticipants.map((participant) => ({
-                  email: participant.email,
-                  id: participant.id,
-                  name: participant.name,
-                }))}
-                replyRecipientLabel={replyRecipientLabel}
-                replyRecipientName={replyRecipientName}
-                ticketId={ticket.id}
-                toParticipants={toParticipants.map((participant) => ({
-                  email: participant.email,
-                  id: participant.id,
-                  name: participant.name,
-                }))}
-              />
-            </CardContent>
-          </Card>
 
           <Card className="min-w-0 rounded-lg border-zinc-200 bg-white shadow-sm">
             <CardHeader>

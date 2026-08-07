@@ -8,8 +8,10 @@ import {
   Download,
   MessageSquareText,
   Paperclip,
+  Reply,
 } from "lucide-react";
 
+import { TicketReplyForm } from "@/components/app/ticket-reply-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +20,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   MessageAuthorType,
   MessageVisibility,
@@ -51,6 +60,8 @@ type TicketTimelineProps = {
   description: string | null;
   messages: TimelineMessage[];
   participants: TimelineParticipant[];
+  supportEmail: string;
+  ticketId: string;
 };
 
 type TimelineParticipant = {
@@ -62,7 +73,14 @@ type TimelineParticipant = {
 
 type TimelineDetailMode = "expanded" | "collapsed";
 
+type ReplyRecipients = {
+  ccEmails: string[];
+  label: string;
+  toEmails: string[];
+};
+
 const timelineDetailModeStorageKey = "suppertime.ticketTimeline.detailMode";
+const emailPattern = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString("en-US", {
@@ -182,6 +200,131 @@ function formatParticipant(participant: TimelineParticipant) {
     : participant.email;
 
   return `${getParticipantRoleLabel(participant.role)}: ${identity}`;
+}
+
+function extractEmailAddresses(value: string | null | undefined) {
+  if (!value) {
+    return [];
+  }
+
+  return Array.from(value.matchAll(emailPattern), (match) =>
+    match[0].toLowerCase(),
+  );
+}
+
+function uniqueEmails(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.toLowerCase())));
+}
+
+function isSupportAddress(email: string, supportEmail: string) {
+  const [supportLocalPart, supportDomain] = supportEmail.toLowerCase().split("@");
+  const [localPart, domain] = email.toLowerCase().split("@");
+
+  return (
+    email.toLowerCase() === supportEmail.toLowerCase() ||
+    Boolean(
+      supportLocalPart &&
+        supportDomain &&
+        domain === supportDomain &&
+        localPart.startsWith(`${supportLocalPart}+`),
+    )
+  );
+}
+
+function isReplyableMessage(message: TimelineMessage) {
+  return (
+    message.visibility === MessageVisibility.PUBLIC &&
+    (message.authorType === MessageAuthorType.CUSTOMER ||
+      message.authorType === MessageAuthorType.AGENT)
+  );
+}
+
+function getReplyRecipients({
+  message,
+  supportEmail,
+}: {
+  message: TimelineMessage;
+  supportEmail: string;
+}): ReplyRecipients {
+  const emailFrom = extractEmailAddresses(message.emailFrom);
+  const emailTo = extractEmailAddresses(message.emailTo);
+  const emailCc = extractEmailAddresses(message.emailCc);
+  const fallbackAuthorEmail =
+    message.authorType === MessageAuthorType.CUSTOMER
+      ? message.customer?.email
+      : null;
+  const toEmails =
+    message.authorType === MessageAuthorType.CUSTOMER
+      ? uniqueEmails([
+          ...emailFrom,
+          ...(fallbackAuthorEmail ? [fallbackAuthorEmail] : []),
+        ]).filter((email) => !isSupportAddress(email, supportEmail))
+      : uniqueEmails(emailTo).filter(
+          (email) => !isSupportAddress(email, supportEmail),
+        );
+  const toEmailSet = new Set(toEmails);
+  const ccEmails =
+    message.authorType === MessageAuthorType.CUSTOMER
+      ? uniqueEmails([...emailCc, ...emailTo]).filter(
+          (email) =>
+            !isSupportAddress(email, supportEmail) && !toEmailSet.has(email),
+        )
+      : uniqueEmails(emailCc).filter(
+          (email) =>
+            !isSupportAddress(email, supportEmail) && !toEmailSet.has(email),
+        );
+  const label =
+    toEmails.length > 0
+      ? toEmails.join(", ")
+      : message.customer?.email ?? getMessageAuthor(message);
+
+  return {
+    ccEmails,
+    label,
+    toEmails,
+  };
+}
+
+function ReplyDialog({
+  message,
+  supportEmail,
+  ticketId,
+}: {
+  message: TimelineMessage;
+  supportEmail: string;
+  ticketId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const recipients = getReplyRecipients({ message, supportEmail });
+
+  if (!isReplyableMessage(message) || recipients.toEmails.length === 0) {
+    return null;
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="bg-white">
+          <Reply data-icon="inline-start" />
+          Reply
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[calc(100vh-2rem)] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Reply to this response</DialogTitle>
+        </DialogHeader>
+        <TicketReplyForm
+          ccParticipants={[]}
+          defaultCcEmails={recipients.ccEmails}
+          defaultToEmails={recipients.toEmails}
+          onSent={() => setOpen(false)}
+          replyRecipientLabel={recipients.label}
+          ticketId={ticketId}
+          toParticipants={[]}
+        />
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function MessageRecipients({
@@ -666,6 +809,8 @@ export function TicketTimeline({
   description,
   messages,
   participants,
+  supportEmail,
+  ticketId,
 }: TicketTimelineProps) {
   const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
   const [detailMode, setDetailMode] =
@@ -844,6 +989,11 @@ export function TicketTimeline({
                   </span>
                 </button>
                 <span className="flex min-w-0 items-center gap-2">
+                  <ReplyDialog
+                    message={message}
+                    supportEmail={supportEmail}
+                    ticketId={ticketId}
+                  />
                   {!isCollapsed ? (
                     <MessageViewToggle
                       message={message}

@@ -207,6 +207,12 @@ function parseEmailList(value: string | null) {
     .filter(Boolean);
 }
 
+function parseEmailFormValues(values: FormDataEntryValue[]) {
+  return values.flatMap((value) =>
+    typeof value === "string" ? parseEmailList(value) : [],
+  );
+}
+
 function assertValidEmail(email: string) {
   if (!emailPattern.test(email)) {
     throw new Error(`Invalid email address: ${email}`);
@@ -682,6 +688,7 @@ export async function addPublicReply(formData: FormData) {
 
   const replyTo = buildTicketReplyAddress(ticket.id, emailReplyToken);
   const primaryRecipientEmail = ticket.customer.email.toLowerCase();
+  const directToEmails = parseEmailFormValues(formData.getAll("toEmail"));
   const selectedToParticipantIds = new Set(
     formData.getAll("toParticipantId").map((value) => String(value)),
   );
@@ -693,7 +700,10 @@ export async function addPublicReply(formData: FormData) {
     )
     .map((participant) => participant.email.toLowerCase());
   const toEmails = Array.from(
-    new Set([primaryRecipientEmail, ...selectedToEmails]),
+    new Set([
+      ...(directToEmails.length > 0 ? directToEmails : [primaryRecipientEmail]),
+      ...selectedToEmails,
+    ]),
   );
   const selectedCcParticipantIds = new Set(
     formData.getAll("ccParticipantId").map((value) => String(value)),
@@ -708,10 +718,15 @@ export async function addPublicReply(formData: FormData) {
   const additionalCcEmails = parseEmailList(
     optionalString(formData, "additionalCc"),
   );
+  const directCcEmails = parseEmailFormValues(formData.getAll("ccEmail"));
   const toEmailSet = new Set(toEmails);
   const ccEmails = Array.from(
-    new Set([...selectedCcEmails, ...additionalCcEmails]),
+    new Set([...directCcEmails, ...selectedCcEmails, ...additionalCcEmails]),
   ).filter((email) => !toEmailSet.has(email));
+
+  if (toEmails.length === 0) {
+    throw new Error("Add at least one recipient.");
+  }
 
   for (const email of toEmails) {
     assertValidEmail(email);
