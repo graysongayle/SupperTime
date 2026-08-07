@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  Languages,
   MessageSquareText,
   Paperclip,
   Reply,
@@ -81,6 +82,7 @@ type ReplyRecipients = {
 
 const timelineDetailModeStorageKey = "suppertime.ticketTimeline.detailMode";
 const emailPattern = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+const translateTextLimit = 4500;
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString("en-US", {
@@ -236,6 +238,47 @@ function isReplyableMessage(message: TimelineMessage) {
     message.visibility === MessageVisibility.PUBLIC &&
     (message.authorType === MessageAuthorType.CUSTOMER ||
       message.authorType === MessageAuthorType.AGENT)
+  );
+}
+
+function getTranslationUrl(message: TimelineMessage) {
+  if (
+    message.visibility !== MessageVisibility.PUBLIC ||
+    message.authorType !== MessageAuthorType.CUSTOMER
+  ) {
+    return null;
+  }
+
+  const body = normalizeMessageBody(message.body);
+
+  if (!body) {
+    return null;
+  }
+
+  const params = new URLSearchParams({
+    op: "translate",
+    sl: "auto",
+    text: body.slice(0, translateTextLimit),
+    tl: "en",
+  });
+
+  return `https://translate.google.com/?${params.toString()}`;
+}
+
+function TranslateMessageButton({ message }: { message: TimelineMessage }) {
+  const translateUrl = getTranslationUrl(message);
+
+  if (!translateUrl) {
+    return null;
+  }
+
+  return (
+    <Button type="button" variant="outline" size="sm" className="bg-white" asChild>
+      <a href={translateUrl} target="_blank" rel="noopener noreferrer">
+        <Languages data-icon="inline-start" />
+        Translate
+      </a>
+    </Button>
   );
 }
 
@@ -989,6 +1032,7 @@ export function TicketTimeline({
                   </span>
                 </button>
                 <span className="flex min-w-0 items-center gap-2">
+                  <TranslateMessageButton message={message} />
                   <ReplyDialog
                     message={message}
                     supportEmail={supportEmail}

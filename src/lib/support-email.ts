@@ -24,6 +24,7 @@ const automatedReplyHeaders: PostmarkHeader[] = [
 
 type SendSupportEmailInput = {
   attachments?: PostmarkAttachment[];
+  bcc?: string | null;
   cc?: string | null;
   htmlBody?: string | null;
   messageStream?: string | null;
@@ -199,6 +200,7 @@ export function buildCustomerConfirmationSubject(ticketNumber: number) {
 
 export async function sendSupportEmail({
   attachments,
+  bcc,
   cc,
   headers,
   htmlBody,
@@ -231,6 +233,7 @@ export async function sendSupportEmail({
     body: JSON.stringify({
       From: getSupportSender().formatted,
       Attachments: attachments && attachments.length > 0 ? attachments : undefined,
+      Bcc: bcc || undefined,
       Cc: cc || undefined,
       Headers: headers,
       HtmlBody: htmlBody ?? textToHtml(textBody),

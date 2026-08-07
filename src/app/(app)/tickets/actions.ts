@@ -723,6 +723,13 @@ export async function addPublicReply(formData: FormData) {
   const ccEmails = Array.from(
     new Set([...directCcEmails, ...selectedCcEmails, ...additionalCcEmails]),
   ).filter((email) => !toEmailSet.has(email));
+  const additionalBccEmails = parseEmailList(
+    optionalString(formData, "additionalBcc"),
+  );
+  const visibleRecipientSet = new Set([...toEmails, ...ccEmails]);
+  const bccEmails = Array.from(new Set(additionalBccEmails)).filter(
+    (email) => !visibleRecipientSet.has(email),
+  );
 
   if (toEmails.length === 0) {
     throw new Error("Add at least one recipient.");
@@ -736,8 +743,13 @@ export async function addPublicReply(formData: FormData) {
     assertValidEmail(email);
   }
 
+  for (const email of bccEmails) {
+    assertValidEmail(email);
+  }
+
   const toRecipients = toEmails.join(",");
   const ccRecipients = ccEmails.length > 0 ? ccEmails.join(",") : null;
+  const bccRecipients = bccEmails.length > 0 ? bccEmails.join(",") : null;
   const subject = ticket.subject.startsWith("Re:")
     ? ticket.subject
     : `Re: ${ticket.subject}`;
@@ -755,6 +767,7 @@ export async function addPublicReply(formData: FormData) {
       : [];
   const result = await sendSupportEmail({
     attachments: pendingAttachmentsToPostmarkAttachments(attachments),
+    bcc: bccRecipients,
     cc: ccRecipients,
     headers: [
       {

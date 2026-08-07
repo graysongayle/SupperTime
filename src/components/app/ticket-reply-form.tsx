@@ -262,24 +262,48 @@ export function TicketReplyForm({
         </div>
       </div>
       <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2.5">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <label
-            htmlFor="additionalCc"
-            className="text-sm font-medium text-zinc-950"
-          >
-            Add Cc addresses
-          </label>
-          <div className="text-xs text-muted-foreground">
-            Separate multiple addresses with commas, semicolons, or spaces.
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <label
+                htmlFor="additionalCc"
+                className="text-sm font-medium text-zinc-950"
+              >
+                Add Cc
+              </label>
+              <div className="text-xs text-muted-foreground">
+                Commas, semicolons, or spaces.
+              </div>
+            </div>
+            <Input
+              id="additionalCc"
+              name="additionalCc"
+              type="text"
+              placeholder="cc@example.com"
+              className="bg-white"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <label
+                htmlFor="additionalBcc"
+                className="text-sm font-medium text-zinc-950"
+              >
+                Add Bcc
+              </label>
+              <div className="text-xs text-muted-foreground">
+                Hidden from other recipients.
+              </div>
+            </div>
+            <Input
+              id="additionalBcc"
+              name="additionalBcc"
+              type="text"
+              placeholder="bcc@example.com"
+              className="bg-white"
+            />
           </div>
         </div>
-        <Input
-          id="additionalCc"
-          name="additionalCc"
-          type="text"
-          placeholder="name@example.com, other@example.com"
-          className="bg-white"
-        />
       </div>
       <div className="flex flex-col gap-2">
         <label htmlFor="replyBody" className="text-sm font-medium text-zinc-950">
