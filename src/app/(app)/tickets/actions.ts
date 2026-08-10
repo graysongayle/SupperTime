@@ -509,12 +509,34 @@ export async function createTicket(formData: FormData) {
   const subject = requiredString(formData, "subject");
   const description = optionalString(formData, "description");
   const priority = String(formData.get("priority") ?? TicketPriority.NORMAL) as TicketPriorityValue;
+  const assignedToValue = optionalString(formData, "assignedToId");
+  const assignedToId =
+    assignedToValue === "unassigned" ? null : (assignedToValue ?? actor.id);
 
   if (!validPriorities.has(priority)) {
     throw new Error("Invalid priority.");
   }
 
   const ticket = await prisma.$transaction(async (tx) => {
+    if (assignedToId) {
+      const assignee = await tx.user.findFirst({
+        where: {
+          id: assignedToId,
+          isActive: true,
+          role: {
+            in: [UserRole.SUPER_ADMIN, UserRole.MANAGER, UserRole.AGENT],
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!assignee) {
+        throw new Error("Invalid assignee.");
+      }
+    }
+
     const customer = await tx.customer.upsert({
       where: {
         email: customerEmail,
@@ -528,15 +550,17 @@ export async function createTicket(formData: FormData) {
       },
     });
 
+    const messageCreatedAt = new Date();
     const created = await tx.ticket.create({
       data: {
         subject,
         description,
         emailReplyToken: createEmailReplyToken(),
+        lastCustomerMessageAt: description ? messageCreatedAt : undefined,
         priority,
         source: TicketSource.MANUAL,
         customerId: customer.id,
-        assignedToId: actor.id,
+        assignedToId,
         participants: {
           create: {
             email: customer.email,
@@ -549,9 +573,13 @@ export async function createTicket(formData: FormData) {
           ? {
               create: {
                 body: description,
-                authorType: MessageAuthorType.AGENT,
-                visibility: MessageVisibility.INTERNAL,
-                agentId: actor.id,
+                authorType: MessageAuthorType.CUSTOMER,
+                visibility: MessageVisibility.PUBLIC,
+                customerId: customer.id,
+                emailFrom: customer.name
+                  ? `${customer.name} <${customer.email}>`
+                  : customer.email,
+                createdAt: messageCreatedAt,
               },
             }
           : undefined,

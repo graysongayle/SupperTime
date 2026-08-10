@@ -11,9 +11,35 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { TicketPriority } from "@/generated/prisma/enums";
+import { TicketPriority, UserRole } from "@/generated/prisma/enums";
+import { getCurrentAppUser } from "@/lib/current-app-user";
+import { prisma } from "@/lib/prisma";
 
-export default function NewTicketPage() {
+export default async function NewTicketPage() {
+  const [agents, currentUser] = await Promise.all([
+    prisma.user.findMany({
+      where: {
+        isActive: true,
+        role: {
+          in: [UserRole.SUPER_ADMIN, UserRole.MANAGER, UserRole.AGENT],
+        },
+      },
+      orderBy: {
+        email: "asc",
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    }),
+    getCurrentAppUser(),
+  ]);
+  const defaultAssigneeId =
+    currentUser && agents.some((agent) => agent.id === currentUser.id)
+      ? currentUser.id
+      : "unassigned";
+
   return (
     <>
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -103,11 +129,11 @@ export default function NewTicketPage() {
                   </label>
 
                   <label className="space-y-1.5 text-sm font-medium">
-                    Internal description
+                    Customer request details
                     <Textarea
                       name="description"
                       rows={9}
-                      placeholder="Add context, reproduction steps, links, or notes for the support team."
+                      placeholder="Enter the customer-facing request details that should appear in the ticket thread."
                     />
                   </label>
                 </section>
@@ -143,12 +169,29 @@ export default function NewTicketPage() {
                         <option value={TicketPriority.URGENT}>Urgent</option>
                       </select>
                     </label>
+
+                    <label className="space-y-1.5 text-sm font-medium">
+                      Assigned to
+                      <select
+                        name="assignedToId"
+                        defaultValue={defaultAssigneeId}
+                        className="h-8 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm shadow-xs outline-none focus:border-cyan-600"
+                      >
+                        <option value="unassigned">Unassigned</option>
+                        {agents.map((agent) => (
+                          <option key={agent.id} value={agent.id}>
+                            {agent.name
+                              ? `${agent.name} <${agent.email}>`
+                              : agent.email}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </section>
 
                   <div className="rounded-lg border border-zinc-200 bg-white p-3 text-sm text-muted-foreground">
-                    Manual tickets are assigned to you initially and start as
-                    open. Customer confirmation email is not sent for manual
-                    internal intake.
+                    Manual tickets start as open. Customer confirmation follows
+                    the configured support email settings.
                   </div>
                 </div>
               </aside>
