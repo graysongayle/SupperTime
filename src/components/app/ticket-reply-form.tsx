@@ -7,6 +7,7 @@ import {
   List,
   ListOrdered,
   Paperclip,
+  Underline,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -122,6 +123,10 @@ function sanitizePastedHtmlNode(node: Node): string {
 
   if (tagName === "i" || tagName === "em") {
     return `<em>${childrenHtml}</em>`;
+  }
+
+  if (tagName === "u") {
+    return `<u>${childrenHtml}</u>`;
   }
 
   if (tagName === "ul" || tagName === "ol" || tagName === "li") {
@@ -527,6 +532,16 @@ export function TicketReplyForm({
             onClick={() => runEditorCommand("italic")}
           >
             <Italic />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Underline"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => runEditorCommand("underline")}
+          >
+            <Underline />
           </Button>
           <Button
             type="button"

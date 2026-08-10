@@ -385,6 +385,8 @@ function sanitizeSubmittedReplyHtml(html: string) {
       output.push(isClosingTag ? "</strong>" : "<strong>");
     } else if (tagName === "i" || tagName === "em") {
       output.push(isClosingTag ? "</em>" : "<em>");
+    } else if (tagName === "u") {
+      output.push(isClosingTag ? "</u>" : "<u>");
     } else if (tagName === "ul" || tagName === "ol" || tagName === "li") {
       output.push(isClosingTag ? `</${tagName}>` : `<${tagName}>`);
     } else if (tagName === "p" || tagName === "div") {
