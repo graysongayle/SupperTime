@@ -223,6 +223,208 @@ function formatActor(actor: { email: string; name: string | null }) {
   return actor.name ? `${actor.name} <${actor.email}>` : actor.email;
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function renderReplyInlineFormatting(value: string) {
+  return escapeHtml(value)
+    .replace(
+      /\[([^\]]+)\]\((https?:\/\/[^)\s]+|mailto:[^)\s]+)\)/g,
+      '<a href="$2">$1</a>',
+    )
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+}
+
+function renderReplyBodyHtml(body: string) {
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  const html: string[] = [];
+  let openList: "ol" | "ul" | null = null;
+
+  function closeList() {
+    if (openList) {
+      html.push(`</${openList}>`);
+      openList = null;
+    }
+  }
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+
+    if (!trimmedLine) {
+      closeList();
+      continue;
+    }
+
+    const unorderedMatch = trimmedLine.match(/^[-*]\s+(.+)$/);
+    const orderedMatch = trimmedLine.match(/^\d+\.\s+(.+)$/);
+
+    if (unorderedMatch || orderedMatch) {
+      const listType = orderedMatch ? "ol" : "ul";
+      const itemText = orderedMatch?.[1] ?? unorderedMatch?.[1] ?? "";
+
+      if (openList !== listType) {
+        closeList();
+        html.push(`<${listType}>`);
+        openList = listType;
+      }
+
+      html.push(`<li>${renderReplyInlineFormatting(itemText)}</li>`);
+      continue;
+    }
+
+    closeList();
+    html.push(`<p>${renderReplyInlineFormatting(trimmedLine)}</p>`);
+  }
+
+  closeList();
+
+  return html.join("");
+}
+
+function isSafeReplyHref(value: string) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:", "mailto:"].includes(url.protocol);
+  } catch {
+    return false;
+  }
+}
+
+const allowedReplyTextColors = new Set([
+  "#18181b",
+  "#b91c1c",
+  "#b45309",
+  "#047857",
+  "#0369a1",
+  "#7e22ce",
+]);
+
+function rgbToHex(red: number, green: number, blue: number) {
+  return `#${[red, green, blue]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function normalizeReplyTextColor(value: string) {
+  const color = value.trim().toLowerCase();
+
+  if (allowedReplyTextColors.has(color)) {
+    return color;
+  }
+
+  const rgbMatch = color.match(
+    /^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/,
+  );
+
+  if (!rgbMatch) {
+    return null;
+  }
+
+  const [red, green, blue] = rgbMatch.slice(1).map(Number);
+
+  if ([red, green, blue].some((channel) => channel < 0 || channel > 255)) {
+    return null;
+  }
+
+  const hex = rgbToHex(red, green, blue);
+  return allowedReplyTextColors.has(hex) ? hex : null;
+}
+
+function getSubmittedReplyTextColor(rawTag: string) {
+  const colorAttribute = rawTag.match(/\scolor=(["'])(.*?)\1/i)?.[2];
+
+  if (colorAttribute) {
+    return normalizeReplyTextColor(colorAttribute);
+  }
+
+  const styleColor = rawTag.match(
+    /\sstyle=(["'])(?:(?!\1).)*color\s*:\s*([^;"']+)(?:(?!\1).)*\1/i,
+  )?.[2];
+
+  return styleColor ? normalizeReplyTextColor(styleColor) : null;
+}
+
+function sanitizeSubmittedReplyHtml(html: string) {
+  const tagPattern = /<\/?[^>]+>/g;
+  const output: string[] = [];
+  let lastIndex = 0;
+  let openColorSpanCount = 0;
+
+  for (const match of html.matchAll(tagPattern)) {
+    const rawTag = match[0];
+    const index = match.index ?? 0;
+
+    if (index > lastIndex) {
+      output.push(escapeHtml(html.slice(lastIndex, index)));
+    }
+
+    const isClosingTag = rawTag.startsWith("</");
+    const tagName = rawTag
+      .replace(/^<\/?\s*/, "")
+      .split(/[\s>/]/)[0]
+      ?.toLowerCase();
+
+    if (!tagName) {
+      lastIndex = index + rawTag.length;
+      continue;
+    }
+
+    if (tagName === "br") {
+      output.push("<br>");
+      lastIndex = index + rawTag.length;
+      continue;
+    }
+
+    if (tagName === "b" || tagName === "strong") {
+      output.push(isClosingTag ? "</strong>" : "<strong>");
+    } else if (tagName === "i" || tagName === "em") {
+      output.push(isClosingTag ? "</em>" : "<em>");
+    } else if (tagName === "ul" || tagName === "ol" || tagName === "li") {
+      output.push(isClosingTag ? `</${tagName}>` : `<${tagName}>`);
+    } else if (tagName === "p" || tagName === "div") {
+      output.push(isClosingTag ? "</p>" : "<p>");
+    } else if (tagName === "a") {
+      if (isClosingTag) {
+        output.push("</a>");
+      } else {
+        const href = rawTag.match(/\shref=(["'])(.*?)\1/i)?.[2] ?? "";
+
+        if (isSafeReplyHref(href)) {
+          output.push(`<a href="${escapeHtml(href)}">`);
+        }
+      }
+    } else if (tagName === "span" || tagName === "font") {
+      if (isClosingTag) {
+        if (openColorSpanCount > 0) {
+          output.push("</span>");
+          openColorSpanCount -= 1;
+        }
+      } else {
+        const color = getSubmittedReplyTextColor(rawTag);
+
+        if (color) {
+          output.push(`<span style="color: ${color}">`);
+          openColorSpanCount += 1;
+        }
+      }
+    }
+
+    lastIndex = index + rawTag.length;
+  }
+
+  if (lastIndex < html.length) {
+    output.push(escapeHtml(html.slice(lastIndex)));
+  }
+
+  return output.join("");
+}
+
 export async function saveTicketViewPreference(formData: FormData) {
   const actor = await requireTicketUser();
   const preferences = normalizeTicketPreference(formData);
@@ -778,6 +980,10 @@ export async function addPublicReply(formData: FormData) {
   const toRecipients = toEmails.join(",");
   const ccRecipients = ccEmails.length > 0 ? ccEmails.join(",") : null;
   const bccRecipients = bccEmails.length > 0 ? bccEmails.join(",") : null;
+  const submittedHtmlBody = optionalString(formData, "bodyHtml");
+  const htmlBody = submittedHtmlBody
+    ? sanitizeSubmittedReplyHtml(submittedHtmlBody)
+    : renderReplyBodyHtml(body);
   const subject = ticket.subject.startsWith("Re:")
     ? ticket.subject
     : `Re: ${ticket.subject}`;
@@ -813,6 +1019,7 @@ export async function addPublicReply(formData: FormData) {
     },
     replyTo,
     subject,
+    htmlBody,
     textBody: body,
     to: toRecipients,
   }).catch(async (error) => {
@@ -883,6 +1090,7 @@ export async function addPublicReply(formData: FormData) {
         emailFrom: actor.name ? `${actor.name} <${actor.email}>` : actor.email,
         emailTo: toRecipients,
         emailCc: ccRecipients,
+        bodyHtml: htmlBody,
         createdAt: messageCreatedAt,
       },
     });
