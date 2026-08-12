@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FileText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -850,6 +851,7 @@ export default async function TicketsPage({
 }: {
   searchParams: Promise<TicketSearchParams>;
 }) {
+  const renderedAt = new Date().toISOString();
   const rawParams = await searchParams;
   const {
     currentUser,
@@ -915,6 +917,12 @@ export default async function TicketsPage({
             {heading.description}
           </p>
         </div>
+        <Button variant="outline" size="sm" asChild className="bg-white">
+          <Link href="/tickets/templates">
+            <FileText className="size-4" />
+            Templates
+          </Link>
+        </Button>
       </div>
 
       <div className="min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
@@ -1028,6 +1036,7 @@ export default async function TicketsPage({
           canBulkUpdateStatus={dashboard.canBulkUpdateStatus}
           hasFilters={hasFilters}
           includeClosed={dashboard.active.includeClosed}
+          renderedAt={renderedAt}
           returnHref={returnHref}
           tickets={dashboard.tickets}
         />

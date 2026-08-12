@@ -24,6 +24,11 @@ const routeTitles = [
     subtitle: "Manual support intake",
   },
   {
+    match: (pathname: string) => pathname === "/tickets/templates",
+    title: "Response templates",
+    subtitle: "Reusable ticket replies",
+  },
+  {
     match: (pathname: string) => pathname.startsWith("/tickets/"),
     title: "Ticket detail",
     subtitle: "Conversation and ticket properties",

@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Clock3,
   Code2,
+  FileText,
   Flame,
   Inbox,
   Settings,
@@ -24,6 +25,7 @@ const primaryItems = [
   { href: "/tickets?status=PENDING", icon: Clock3, label: "Waiting on other" },
   { href: "/tickets?priority=URGENT", icon: Flame, label: "Urgent" },
   { href: "/tickets?status=RESOLVED", icon: CheckCircle2, label: "Resolved" },
+  { href: "/tickets/templates", icon: FileText, label: "Templates" },
   { href: "/customers", icon: UsersRound, label: "Customers" },
 ];
 
@@ -53,6 +55,7 @@ export function AppNav({
         const isInbox =
           item.href === "/tickets" &&
           pathname.startsWith("/tickets") &&
+          !pathname.startsWith("/tickets/templates") &&
           (pathname !== "/tickets" || searchParams.size === 0);
         const isCustomers =
           item.href === "/customers" && pathname.startsWith("/customers");

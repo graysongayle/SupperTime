@@ -112,13 +112,14 @@ type TicketBulkTableProps = {
   canBulkUpdateStatus: boolean;
   hasFilters: boolean;
   includeClosed: boolean;
+  renderedAt: string;
   returnHref: string;
   tickets: TicketBulkTableTicket[];
 };
 
-function formatRelativeTime(value: Date | string) {
+function formatRelativeTime(value: Date | string, nowValue: Date | string) {
   const date = value instanceof Date ? value : new Date(value);
-  const now = new Date();
+  const now = nowValue instanceof Date ? nowValue : new Date(nowValue);
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
   const updatedDay = new Date(date);
@@ -152,8 +153,11 @@ function formatRelativeTime(value: Date | string) {
   return `${Math.floor(diffHours / 24)}d`;
 }
 
-function formatOptionalRelativeTime(value: Date | string | null) {
-  return value ? formatRelativeTime(value) : "None";
+function formatOptionalRelativeTime(
+  value: Date | string | null,
+  nowValue: Date | string,
+) {
+  return value ? formatRelativeTime(value, nowValue) : "None";
 }
 
 export function TicketBulkTable({
@@ -162,6 +166,7 @@ export function TicketBulkTable({
   canBulkUpdateStatus,
   hasFilters,
   includeClosed,
+  renderedAt,
   returnHref,
   tickets,
 }: TicketBulkTableProps) {
@@ -478,9 +483,14 @@ export function TicketBulkTable({
                   </span>
                   <span>
                     Customer{" "}
-                    {formatOptionalRelativeTime(ticket.lastCustomerMessageAt)}
+                    {formatOptionalRelativeTime(
+                      ticket.lastCustomerMessageAt,
+                      renderedAt,
+                    )}
                   </span>
-                  <span>Update {formatRelativeTime(ticket.updatedAt)}</span>
+                  <span>
+                    Update {formatRelativeTime(ticket.updatedAt, renderedAt)}
+                  </span>
                 </div>
                 {agingState ? (
                   <div className="mt-2">
@@ -637,13 +647,21 @@ export function TicketBulkTable({
                   </TableCell>
                   <TableCell className="w-[170px] whitespace-nowrap text-right text-muted-foreground">
                     <div className="text-xs">
-                      Customer {formatOptionalRelativeTime(ticket.lastCustomerMessageAt)}
+                      Customer{" "}
+                      {formatOptionalRelativeTime(
+                        ticket.lastCustomerMessageAt,
+                        renderedAt,
+                      )}
                     </div>
                     <div className="text-xs">
-                      Agent {formatOptionalRelativeTime(ticket.lastAgentMessageAt)}
+                      Agent{" "}
+                      {formatOptionalRelativeTime(
+                        ticket.lastAgentMessageAt,
+                        renderedAt,
+                      )}
                     </div>
                     <div className="text-xs">
-                      Update {formatRelativeTime(ticket.updatedAt)}
+                      Update {formatRelativeTime(ticket.updatedAt, renderedAt)}
                     </div>
                     {agingState ? (
                       <div className="mt-1 flex justify-end">

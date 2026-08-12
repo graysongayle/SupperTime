@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const prismaSchemaVersion = "20260706110000_support_article_nullable_fields";
+const prismaSchemaVersion = "20260812120000_add_canned_responses";
 
 function getDatabaseUrl() {
   const databaseUrl = process.env.DATABASE_URL ?? "";

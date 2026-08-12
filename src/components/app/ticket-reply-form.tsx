@@ -2,6 +2,7 @@
 
 import {
   Clipboard,
+  FileText,
   Italic,
   Link as LinkIcon,
   List,
@@ -10,6 +11,7 @@ import {
   Underline,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 
@@ -23,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
 
 type TicketReplyFormProps = {
+  cannedResponses?: CannedResponse[];
   ccParticipants: Array<{
     email: string;
     id: string;
@@ -38,6 +41,13 @@ type TicketReplyFormProps = {
     id: string;
     name: string | null;
   }>;
+};
+
+type CannedResponse = {
+  id: string;
+  title: string;
+  body: string;
+  bodyHtml: string | null;
 };
 
 const textColorOptions = [
@@ -164,6 +174,21 @@ function sanitizePastedHtml(html: string) {
     .join("");
 }
 
+function renderPlainTextAsHtml(value: string) {
+  return value
+    .replace(/\r\n/g, "\n")
+    .split(/\n{2,}/)
+    .map((paragraph) => {
+      const lines = paragraph
+        .split("\n")
+        .map((line) => escapeHtml(line))
+        .join("<br>");
+
+      return `<p>${lines}</p>`;
+    })
+    .join("");
+}
+
 function fileKey(file: File) {
   return [file.name, file.type, file.size, file.lastModified].join(":");
 }
@@ -216,6 +241,7 @@ function RecipientCheckbox({
 }
 
 export function TicketReplyForm({
+  cannedResponses = [],
   ccParticipants,
   defaultCcEmails = [],
   defaultToEmails = [],
@@ -230,7 +256,11 @@ export function TicketReplyForm({
   const [attachments, setAttachments] = useState<File[]>([]);
   const [body, setBody] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [isPending, startTransition] = useTransition();
+  const selectedTemplate =
+    cannedResponses.find((template) => template.id === selectedTemplateId) ??
+    null;
 
   function addAttachments(files: File[]) {
     if (attachments.length + files.length > maxAttachmentCount) {
@@ -259,7 +289,9 @@ export function TicketReplyForm({
   }
 
   function removeAttachment(index: number) {
-    setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setAttachments((current) =>
+      current.filter((_, itemIndex) => itemIndex !== index),
+    );
   }
 
   function handleFileInputChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -330,6 +362,21 @@ export function TicketReplyForm({
     }
 
     runEditorCommand("createLink", url);
+  }
+
+  function insertTemplate() {
+    if (!selectedTemplate || !editorRef.current) {
+      return;
+    }
+
+    const editor = editorRef.current;
+    const html =
+      selectedTemplate.bodyHtml || renderPlainTextAsHtml(selectedTemplate.body);
+    const separator = editor.innerText.trim() ? "<p><br></p>" : "";
+
+    editor.insertAdjacentHTML("beforeend", `${separator}${html}`);
+    syncEditorState();
+    editor.focus();
   }
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -409,7 +456,13 @@ export function TicketReplyForm({
               ))
             ) : (
               <div className="flex min-w-0 items-start gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm">
-                <input type="checkbox" checked readOnly disabled className="mt-1" />
+                <input
+                  type="checkbox"
+                  checked
+                  readOnly
+                  disabled
+                  className="mt-1"
+                />
                 <span className="min-w-0">
                   <span className="block break-words font-medium text-zinc-950 [overflow-wrap:anywhere]">
                     {replyRecipientLabel}
@@ -510,6 +563,59 @@ export function TicketReplyForm({
         <label htmlFor="replyBody" className="text-sm font-medium text-zinc-950">
           Message
         </label>
+        <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-48 flex-1 flex-col gap-1">
+              <label
+                htmlFor="cannedResponse"
+                className="text-sm font-medium text-zinc-950"
+              >
+                Templates
+              </label>
+              <select
+                id="cannedResponse"
+                value={selectedTemplateId}
+                className="h-8 rounded-lg border border-zinc-200 bg-white px-2 text-sm shadow-xs outline-none focus:border-cyan-600"
+                onChange={(event) => {
+                  setSelectedTemplateId(event.target.value);
+                }}
+              >
+                <option value="">Choose a template</option>
+                {cannedResponses.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="self-end bg-white"
+              disabled={!selectedTemplate}
+              onClick={insertTemplate}
+            >
+              <FileText data-icon="inline-start" />
+              Insert
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="self-end bg-white"
+              asChild
+            >
+              <Link
+                href="/tickets/templates"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Manage
+              </Link>
+            </Button>
+          </div>
+        </div>
         <input type="hidden" name="body" value={body} />
         <input type="hidden" name="bodyHtml" value={bodyHtml} />
         <div className="flex flex-wrap items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-1">

@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   Clock3,
   Code2,
+  FileText,
   Inbox,
   LifeBuoy,
   List,
@@ -205,6 +206,12 @@ export function AppSidebar({
           <SidebarGroupLabel>Records</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
+              <SidebarNavButton
+                href="/tickets/templates"
+                icon={FileText}
+                title="Templates"
+                active={pathname === "/tickets/templates"}
+              />
               <SidebarNavButton
                 href="/customers"
                 icon={UsersRound}

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   CircleDot,
   Mail,
   Plus,
@@ -36,7 +38,10 @@ import {
   TicketSource,
   TicketStatus,
   UserRole,
+  type TicketPriority as TicketPriorityValue,
+  type TicketStatus as TicketStatusValue,
 } from "@/generated/prisma/enums";
+import { Prisma } from "@/generated/prisma/client";
 import { getCurrentAppUser } from "@/lib/current-app-user";
 import { prisma } from "@/lib/prisma";
 import {
@@ -81,6 +86,25 @@ const sourceLabels = {
   [TicketSource.MANUAL]: "Manual",
   [TicketSource.FRESHDESK_IMPORT]: "Freshdesk Import",
 };
+const validStatuses = new Set<TicketStatusValue>(Object.values(TicketStatus));
+const validPriorities = new Set<TicketPriorityValue>(
+  Object.values(TicketPriority),
+);
+const unassignedAssigneeValue = "unassigned";
+const ticketSorts = [
+  "last_customer_desc",
+  "last_customer_asc",
+  "last_agent_desc",
+  "last_agent_asc",
+  "updated_desc",
+  "updated_asc",
+  "received_desc",
+  "received_asc",
+] as const;
+const defaultSort = "last_customer_desc";
+const validSorts = new Set<string>(ticketSorts);
+
+type TicketSort = (typeof ticketSorts)[number];
 
 function formatDate(date: Date | null) {
   if (!date) {
@@ -106,6 +130,171 @@ function getTicketsReturnHref(value: string | undefined) {
   }
 
   return "/tickets";
+}
+
+function normalizeEnumValues<T extends string>(
+  value: string | undefined,
+  validValues: Set<T>,
+) {
+  if (!value) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((item) => item.trim().toUpperCase() as T)
+        .filter((item) => validValues.has(item)),
+    ),
+  );
+}
+
+function normalizeSort(value: string | undefined): TicketSort {
+  return validSorts.has(value as TicketSort)
+    ? (value as TicketSort)
+    : defaultSort;
+}
+
+function buildTicketOrderBy(sort: TicketSort): Prisma.TicketOrderByWithRelationInput[] {
+  if (sort === "last_customer_asc") {
+    return [
+      { lastCustomerMessageAt: { sort: "asc", nulls: "last" } },
+      { updatedAt: "asc" },
+      { number: "asc" },
+    ];
+  }
+
+  if (sort === "last_agent_desc") {
+    return [
+      { lastAgentMessageAt: { sort: "desc", nulls: "last" } },
+      { updatedAt: "desc" },
+      { number: "desc" },
+    ];
+  }
+
+  if (sort === "last_agent_asc") {
+    return [
+      { lastAgentMessageAt: { sort: "asc", nulls: "last" } },
+      { updatedAt: "asc" },
+      { number: "asc" },
+    ];
+  }
+
+  if (sort === "updated_desc") {
+    return [{ updatedAt: "desc" }, { number: "desc" }];
+  }
+
+  if (sort === "updated_asc") {
+    return [{ updatedAt: "asc" }, { number: "asc" }];
+  }
+
+  if (sort === "received_desc") {
+    return [{ createdAt: "desc" }, { number: "desc" }];
+  }
+
+  if (sort === "received_asc") {
+    return [{ createdAt: "asc" }, { number: "asc" }];
+  }
+
+  return [
+    { lastCustomerMessageAt: { sort: "desc", nulls: "last" } },
+    { updatedAt: "desc" },
+    { number: "desc" },
+  ];
+}
+
+function buildTicketWhere({
+  assignees,
+  currentUserId,
+  includeClosed,
+  priorities,
+  q,
+  statuses,
+  view,
+}: {
+  assignees: string[];
+  currentUserId: string | null;
+  includeClosed: boolean;
+  priorities: TicketPriorityValue[];
+  q: string | null;
+  statuses: TicketStatusValue[];
+  view: string | null;
+}) {
+  const clauses: Prisma.TicketWhereInput[] = [];
+
+  if (statuses.length > 0) {
+    clauses.push({ status: { in: statuses } });
+  } else if (
+    !includeClosed &&
+    (view === "mine" || view === "unassigned")
+  ) {
+    clauses.push({
+      status: {
+        notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED],
+      },
+    });
+  } else if (!includeClosed) {
+    clauses.push({ status: { not: TicketStatus.CLOSED } });
+  }
+
+  if (priorities.length > 0) {
+    clauses.push({ priority: { in: priorities } });
+  }
+
+  if (view === "mine" && currentUserId) {
+    clauses.push({ assignedToId: currentUserId });
+  } else if (view === "unassigned") {
+    clauses.push({ assignedToId: null });
+  } else if (assignees.length > 0) {
+    const userAssignees = assignees.filter(
+      (assignee) => assignee !== unassignedAssigneeValue,
+    );
+    const includeUnassigned = assignees.includes(unassignedAssigneeValue);
+    const assigneeClauses: Prisma.TicketWhereInput[] = [];
+
+    if (userAssignees.length > 0) {
+      assigneeClauses.push({ assignedToId: { in: userAssignees } });
+    }
+
+    if (includeUnassigned) {
+      assigneeClauses.push({ assignedToId: null });
+    }
+
+    if (assigneeClauses.length === 1) {
+      clauses.push(assigneeClauses[0]);
+    } else if (assigneeClauses.length > 1) {
+      clauses.push({ OR: assigneeClauses });
+    }
+  }
+
+  if (q) {
+    const maybeNumber = Number(q.replace(/^#/, ""));
+    const searchClauses: Prisma.TicketWhereInput[] = [
+      { subject: { contains: q, mode: "insensitive" } },
+      { description: { contains: q, mode: "insensitive" } },
+      { customer: { name: { contains: q, mode: "insensitive" } } },
+      { customer: { email: { contains: q, mode: "insensitive" } } },
+      { messages: { some: { body: { contains: q, mode: "insensitive" } } } },
+    ];
+
+    if (Number.isInteger(maybeNumber)) {
+      searchClauses.unshift({ number: maybeNumber });
+    }
+
+    clauses.push({ OR: searchClauses });
+  }
+
+  return clauses.length > 0 ? { AND: clauses } : {};
+}
+
+function getTicketListSearchParams(returnHref: string) {
+  const [, query = ""] = returnHref.split("?");
+  return new URLSearchParams(query);
+}
+
+function getTicketDetailHref(ticketId: string, returnHref: string) {
+  return `/tickets/${ticketId}?from=${encodeURIComponent(returnHref)}`;
 }
 
 export default async function TicketDetailPage({
@@ -216,6 +405,79 @@ export default async function TicketDetailPage({
     notFound();
   }
 
+  const listSearchParams = getTicketListSearchParams(returnHref);
+  const listStatuses = normalizeEnumValues<TicketStatusValue>(
+    listSearchParams.get("status") ?? undefined,
+    validStatuses,
+  );
+  const listPriorities = normalizeEnumValues<TicketPriorityValue>(
+    listSearchParams.get("priority") ?? undefined,
+    validPriorities,
+  );
+  const listAssignees = listSearchParams.get("assignee")
+    ? Array.from(
+        new Set(
+          listSearchParams
+            .get("assignee")!
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean),
+        ),
+      )
+    : [];
+  const listSort = normalizeSort(listSearchParams.get("sort") ?? undefined);
+  const listView = listSearchParams.get("view")?.trim() || null;
+  const listWhere = buildTicketWhere({
+    assignees: listAssignees,
+    currentUserId: viewer?.id ?? null,
+    includeClosed: listSearchParams.get("includeClosed") === "true",
+    priorities: listPriorities,
+    q: listSearchParams.get("q")?.trim() || null,
+    statuses: listStatuses,
+    view: listView,
+  });
+  const listTickets = await prisma.ticket.findMany({
+    where: listWhere,
+    orderBy: buildTicketOrderBy(listSort),
+    select: {
+      id: true,
+      number: true,
+      subject: true,
+    },
+  });
+  const currentListIndex = listTickets.findIndex(
+    (listTicket) => listTicket.id === ticket.id,
+  );
+  const previousTicket =
+    currentListIndex > 0 ? listTickets[currentListIndex - 1] : null;
+  const nextTicket =
+    currentListIndex >= 0 && currentListIndex < listTickets.length - 1
+      ? listTickets[currentListIndex + 1]
+      : null;
+
+  const cannedResponses =
+    viewer && viewer.isActive && viewer.role !== UserRole.GUEST
+      ? await prisma.cannedResponse.findMany({
+          where: {
+            userId: viewer.id,
+          },
+          orderBy: [
+            {
+              sortOrder: "asc",
+            },
+            {
+              title: "asc",
+            },
+          ],
+          select: {
+            id: true,
+            title: true,
+            body: true,
+            bodyHtml: true,
+          },
+        })
+      : [];
+
   await prisma.$executeRaw`
     update "Ticket"
     set "customerResponseUnreadAt" = null
@@ -285,16 +547,51 @@ export default async function TicketDetailPage({
             {formatDate(ticket.createdAt)}
           </p>
         </div>
-        <TicketForwardSheet
-          ticketId={ticket.id}
-          ticketNumber={ticket.number}
-          ticketSubject={ticket.subject}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {previousTicket ? (
+            <Button variant="outline" size="sm" asChild className="bg-white">
+              <Link
+                href={getTicketDetailHref(previousTicket.id, returnHref)}
+                title={`Previous ticket: #${previousTicket.number} ${previousTicket.subject}`}
+              >
+                <ChevronLeft className="size-4" />
+                Previous
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" disabled className="bg-white">
+              <ChevronLeft className="size-4" />
+              Previous
+            </Button>
+          )}
+          {nextTicket ? (
+            <Button variant="outline" size="sm" asChild className="bg-white">
+              <Link
+                href={getTicketDetailHref(nextTicket.id, returnHref)}
+                title={`Next ticket: #${nextTicket.number} ${nextTicket.subject}`}
+              >
+                Next
+                <ChevronRight className="size-4" />
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" disabled className="bg-white">
+              Next
+              <ChevronRight className="size-4" />
+            </Button>
+          )}
+          <TicketForwardSheet
+            ticketId={ticket.id}
+            ticketNumber={ticket.number}
+            ticketSubject={ticket.subject}
+          />
+        </div>
       </div>
 
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0 space-y-5">
           <TicketTimeline
+            cannedResponses={cannedResponses}
             description={ticket.description}
             messages={ticket.messages.map((message) => ({
               id: message.id,

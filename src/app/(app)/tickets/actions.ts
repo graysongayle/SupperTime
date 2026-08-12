@@ -831,6 +831,105 @@ export async function createTicket(formData: FormData) {
   redirect(`/tickets/${ticket.id}`);
 }
 
+export async function saveCannedResponse(formData: FormData) {
+  const actor = await requireTicketUser();
+  const templateId = optionalString(formData, "templateId");
+  const title = requiredString(formData, "title");
+  const body = requiredString(formData, "body");
+  const submittedHtmlBody = optionalString(formData, "bodyHtml");
+  const ticketId = optionalString(formData, "ticketId");
+  const bodyHtml = submittedHtmlBody
+    ? sanitizeSubmittedReplyHtml(submittedHtmlBody)
+    : renderReplyBodyHtml(body);
+
+  if (title.length > 120) {
+    throw new Error("Template title must be 120 characters or fewer.");
+  }
+
+  const existing = templateId
+    ? await prisma.cannedResponse.findFirst({
+        where: {
+          id: templateId,
+          userId: actor.id,
+        },
+        select: {
+          id: true,
+        },
+      })
+    : await prisma.cannedResponse.findUnique({
+        where: {
+          userId_title: {
+            userId: actor.id,
+            title,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+  if (templateId && !existing) {
+    throw new Error("Template not found.");
+  }
+
+  const template = existing
+    ? await prisma.cannedResponse.update({
+        where: {
+          id: existing.id,
+        },
+        data: {
+          title,
+          body,
+          bodyHtml,
+        },
+        select: {
+          id: true,
+          title: true,
+          body: true,
+          bodyHtml: true,
+        },
+      })
+    : await prisma.cannedResponse.create({
+        data: {
+          title,
+          body,
+          bodyHtml,
+          userId: actor.id,
+        },
+        select: {
+          id: true,
+          title: true,
+          body: true,
+          bodyHtml: true,
+        },
+      });
+
+  if (ticketId) {
+    revalidatePath(`/tickets/${ticketId}`);
+  }
+  revalidatePath("/tickets/templates");
+
+  return template;
+}
+
+export async function deleteCannedResponse(formData: FormData) {
+  const actor = await requireTicketUser();
+  const templateId = requiredString(formData, "templateId");
+  const ticketId = optionalString(formData, "ticketId");
+
+  await prisma.cannedResponse.deleteMany({
+    where: {
+      id: templateId,
+      userId: actor.id,
+    },
+  });
+
+  if (ticketId) {
+    revalidatePath(`/tickets/${ticketId}`);
+  }
+  revalidatePath("/tickets/templates");
+}
+
 export async function addInternalNote(formData: FormData) {
   const actor = await requireTicketUser();
   const ticketId = requiredString(formData, "ticketId");

@@ -58,11 +58,19 @@ type TimelineAttachment = {
 };
 
 type TicketTimelineProps = {
+  cannedResponses: CannedResponse[];
   description: string | null;
   messages: TimelineMessage[];
   participants: TimelineParticipant[];
   supportEmail: string;
   ticketId: string;
+};
+
+type CannedResponse = {
+  id: string;
+  title: string;
+  body: string;
+  bodyHtml: string | null;
 };
 
 type TimelineParticipant = {
@@ -330,10 +338,12 @@ function getReplyRecipients({
 }
 
 function ReplyDialog({
+  cannedResponses,
   message,
   supportEmail,
   ticketId,
 }: {
+  cannedResponses: CannedResponse[];
   message: TimelineMessage;
   supportEmail: string;
   ticketId: string;
@@ -358,6 +368,7 @@ function ReplyDialog({
           <DialogTitle>Reply to this response</DialogTitle>
         </DialogHeader>
         <TicketReplyForm
+          cannedResponses={cannedResponses}
           ccParticipants={[]}
           defaultCcEmails={recipients.ccEmails}
           defaultToEmails={recipients.toEmails}
@@ -378,6 +389,10 @@ function MessageRecipients({
   message: TimelineMessage;
   participants: TimelineParticipant[];
 }) {
+  if (message.visibility === MessageVisibility.INTERNAL) {
+    return null;
+  }
+
   const from = message.emailFrom ?? getMessageAuthor(message);
   const hasMessageRecipients = Boolean(message.emailTo || message.emailCc);
   const showTicketParticipants = !hasMessageRecipients && participants.length > 0;
@@ -698,7 +713,14 @@ function MessageBody({
           className="h-80 w-full rounded-lg border border-zinc-200 bg-white"
         />
       ) : (
-        <p className="whitespace-pre-wrap break-words text-sm text-zinc-700 [overflow-wrap:anywhere]">
+        <p
+          className={cn(
+            "whitespace-pre-wrap break-words text-zinc-700 [overflow-wrap:anywhere]",
+            message.visibility === MessageVisibility.INTERNAL
+              ? "text-xs"
+              : "text-sm",
+          )}
+        >
           {plainBody || "No message body."}
         </p>
       )}
@@ -850,6 +872,7 @@ function isSafeUrl(value: string) {
 }
 
 export function TicketTimeline({
+  cannedResponses,
   description,
   messages,
   participants,
@@ -1035,6 +1058,7 @@ export function TicketTimeline({
                 <span className="flex min-w-0 items-center gap-2">
                   <TranslateMessageButton message={message} />
                   <ReplyDialog
+                    cannedResponses={cannedResponses}
                     message={message}
                     supportEmail={supportEmail}
                     ticketId={ticketId}
