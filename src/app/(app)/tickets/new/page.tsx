@@ -9,8 +9,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { NewTicketMessageEditor } from "@/components/app/new-ticket-message-editor";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { TicketPriority, UserRole } from "@/generated/prisma/enums";
 import { getCurrentAppUser } from "@/lib/current-app-user";
 import { prisma } from "@/lib/prisma";
@@ -128,14 +128,15 @@ export default async function NewTicketPage() {
                     />
                   </label>
 
-                  <label className="space-y-1.5 text-sm font-medium">
-                    Customer request details
-                    <Textarea
-                      name="description"
-                      rows={9}
-                      placeholder="Enter the customer-facing request details that should appear in the ticket thread."
-                    />
-                  </label>
+                  <div className="flex flex-col gap-1.5">
+                    <label
+                      htmlFor="description"
+                      className="text-sm font-medium"
+                    >
+                      Customer request details
+                    </label>
+                    <NewTicketMessageEditor />
+                  </div>
                 </section>
               </div>
 

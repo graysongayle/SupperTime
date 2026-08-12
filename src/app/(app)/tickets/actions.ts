@@ -712,6 +712,11 @@ export async function createTicket(formData: FormData) {
   const customerName = optionalString(formData, "customerName");
   const subject = requiredString(formData, "subject");
   const description = optionalString(formData, "description");
+  const submittedDescriptionHtml = optionalString(formData, "descriptionHtml");
+  const descriptionHtml =
+    description && submittedDescriptionHtml
+      ? sanitizeSubmittedReplyHtml(submittedDescriptionHtml)
+      : null;
   const priority = String(formData.get("priority") ?? TicketPriority.NORMAL) as TicketPriorityValue;
   const assignedToValue = optionalString(formData, "assignedToId");
   const assignedToId =
@@ -777,6 +782,7 @@ export async function createTicket(formData: FormData) {
           ? {
               create: {
                 body: description,
+                bodyHtml: descriptionHtml,
                 authorType: MessageAuthorType.CUSTOMER,
                 visibility: MessageVisibility.PUBLIC,
                 customerId: customer.id,
