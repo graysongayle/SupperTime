@@ -925,7 +925,7 @@ export default async function TicketsPage({
         </Button>
       </div>
 
-      <div className="min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
+      <div className="hidden min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm md:block">
         <div className="grid min-w-0 gap-0 sm:grid-cols-2 lg:grid-cols-[0.8fr_0.9fr_0.8fr_1.5fr]">
           <div className="min-w-0 border-b border-zinc-200 px-3 py-2.5 sm:border-r lg:border-b-0">
             <div className="text-xs font-medium text-muted-foreground">

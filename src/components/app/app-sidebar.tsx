@@ -32,6 +32,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar"
 
 type SidebarCount = {
@@ -85,17 +86,19 @@ function SidebarNavButton({
   title,
   badge,
   active,
+  onNavigate,
 }: {
   href: string
   icon: React.ComponentType<{ className?: string }>
   title: string
   badge?: number
   active: boolean
+  onNavigate: () => void
 }) {
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={active} tooltip={title}>
-        <Link href={href}>
+        <Link href={href} onClick={onNavigate}>
           <Icon />
           <span>{title}</span>
         </Link>
@@ -119,6 +122,11 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const pathname = usePathname()
   const search = useSearchParams().toString()
+  const { setOpenMobile } = useSidebar()
+
+  function closeMobileSidebar() {
+    setOpenMobile(false)
+  }
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -129,7 +137,7 @@ export function AppSidebar({
               asChild
               className="data-[slot=sidebar-menu-button]:p-1.5!"
             >
-              <Link href="/tickets">
+              <Link href="/tickets" onClick={closeMobileSidebar}>
                 <span className="flex size-8 items-center justify-center rounded-md bg-zinc-900 text-white shadow-sm">
                   <Inbox className="size-4" />
                 </span>
@@ -158,6 +166,7 @@ export function AppSidebar({
                 title="Active tickets"
                 badge={counts.activeTickets}
                 active={isActiveHref(pathname, search, activeTicketsHref)}
+                onNavigate={closeMobileSidebar}
               />
               <SidebarNavButton
                 href="/tickets?view=mine"
@@ -165,6 +174,7 @@ export function AppSidebar({
                 title="Assigned to me"
                 badge={counts.assignedToMe}
                 active={isActiveHref(pathname, search, "/tickets?view=mine")}
+                onNavigate={closeMobileSidebar}
               />
               <SidebarNavButton
                 href="/tickets?view=unassigned"
@@ -176,6 +186,7 @@ export function AppSidebar({
                   search,
                   "/tickets?view=unassigned",
                 )}
+                onNavigate={closeMobileSidebar}
               />
               <SidebarNavButton
                 href={urgentTicketsHref}
@@ -183,6 +194,7 @@ export function AppSidebar({
                 title="Urgent"
                 badge={counts.urgent}
                 active={isActiveHref(pathname, search, urgentTicketsHref)}
+                onNavigate={closeMobileSidebar}
               />
               <SidebarNavButton
                 href={waitingStatusesHref}
@@ -190,6 +202,7 @@ export function AppSidebar({
                 title="Waiting on others"
                 badge={counts.waiting}
                 active={isActiveHref(pathname, search, waitingStatusesHref)}
+                onNavigate={closeMobileSidebar}
               />
               <SidebarNavButton
                 href={allTicketsHref}
@@ -197,6 +210,7 @@ export function AppSidebar({
                 title="All tickets"
                 badge={counts.allTickets}
                 active={isActiveHref(pathname, search, allTicketsHref)}
+                onNavigate={closeMobileSidebar}
               />
             </SidebarMenu>
           </SidebarGroupContent>
@@ -211,12 +225,14 @@ export function AppSidebar({
                 icon={FileText}
                 title="Templates"
                 active={pathname === "/tickets/templates"}
+                onNavigate={closeMobileSidebar}
               />
               <SidebarNavButton
                 href="/customers"
                 icon={UsersRound}
                 title="Customers"
                 active={pathname.startsWith("/customers")}
+                onNavigate={closeMobileSidebar}
               />
             </SidebarMenu>
           </SidebarGroupContent>
@@ -232,6 +248,7 @@ export function AppSidebar({
                   icon={Code2}
                   title="Support forms"
                   active={pathname.startsWith("/support-forms")}
+                  onNavigate={closeMobileSidebar}
                 />
               ) : null}
               {isSuperAdmin ? (
@@ -241,12 +258,14 @@ export function AppSidebar({
                     icon={UsersRound}
                     title="Users"
                     active={pathname.startsWith("/admin/users")}
+                    onNavigate={closeMobileSidebar}
                   />
                   <SidebarNavButton
                     href="/admin/maintenance"
                     icon={Settings}
                     title="Maintenance"
                     active={pathname.startsWith("/admin/maintenance")}
+                    onNavigate={closeMobileSidebar}
                   />
                 </>
               ) : null}
@@ -263,6 +282,7 @@ export function AppSidebar({
                 icon={LifeBuoy}
                 title="Help center"
                 active={pathname.startsWith("/help-center")}
+                onNavigate={closeMobileSidebar}
               />
             </SidebarMenu>
           </SidebarGroupContent>
