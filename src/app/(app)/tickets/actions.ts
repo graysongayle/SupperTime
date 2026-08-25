@@ -231,6 +231,57 @@ function escapeHtml(value: string) {
     .replace(/"/g, "&quot;");
 }
 
+function decodeHtmlTextEntities(value: string) {
+  return value.replace(
+    /&(?:nbsp|amp|lt|gt|quot|#39|apos|#x[0-9a-f]+|#[0-9]+);/gi,
+    (entity) => {
+      const normalized = entity.toLowerCase();
+
+      if (normalized === "&nbsp;") {
+        return "\u00a0";
+      }
+
+      if (normalized === "&amp;") {
+        return "&";
+      }
+
+      if (normalized === "&lt;") {
+        return "<";
+      }
+
+      if (normalized === "&gt;") {
+        return ">";
+      }
+
+      if (normalized === "&quot;") {
+        return '"';
+      }
+
+      if (normalized === "&#39;" || normalized === "&apos;") {
+        return "'";
+      }
+
+      const codePoint = normalized.startsWith("&#x")
+        ? Number.parseInt(normalized.slice(3, -1), 16)
+        : Number.parseInt(normalized.slice(2, -1), 10);
+
+      if (!Number.isFinite(codePoint)) {
+        return entity;
+      }
+
+      try {
+        return String.fromCodePoint(codePoint);
+      } catch {
+        return entity;
+      }
+    },
+  );
+}
+
+function escapeSubmittedHtmlText(value: string) {
+  return escapeHtml(decodeHtmlTextEntities(value));
+}
+
 function renderReplyInlineFormatting(value: string) {
   return escapeHtml(value)
     .replace(
@@ -361,7 +412,7 @@ function sanitizeSubmittedReplyHtml(html: string) {
     const index = match.index ?? 0;
 
     if (index > lastIndex) {
-      output.push(escapeHtml(html.slice(lastIndex, index)));
+      output.push(escapeSubmittedHtmlText(html.slice(lastIndex, index)));
     }
 
     const isClosingTag = rawTag.startsWith("</");
@@ -421,7 +472,7 @@ function sanitizeSubmittedReplyHtml(html: string) {
   }
 
   if (lastIndex < html.length) {
-    output.push(escapeHtml(html.slice(lastIndex)));
+    output.push(escapeSubmittedHtmlText(html.slice(lastIndex)));
   }
 
   return output.join("");

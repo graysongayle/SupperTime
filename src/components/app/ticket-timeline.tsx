@@ -515,7 +515,9 @@ function MessageAttachments({
 }
 
 function sanitizeEmailHtml(html: string) {
-  return sanitizeEmailHtmlDocument(html)?.body.innerHTML ?? "";
+  return normalizeEmailHtmlSpacingEntities(
+    sanitizeEmailHtmlDocument(html)?.body.innerHTML ?? "",
+  );
 }
 
 function sanitizeEmailHtmlDocument(html: string) {
@@ -685,7 +687,11 @@ function simplifyEmailHtml(html: string) {
     }
   }
 
-  return document.body.innerHTML;
+  return normalizeEmailHtmlSpacingEntities(document.body.innerHTML);
+}
+
+function normalizeEmailHtmlSpacingEntities(html: string) {
+  return html.replace(/&amp;(nbsp|#160|#xa0);/gi, "&$1;");
 }
 
 function MessageBody({
