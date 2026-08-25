@@ -12,6 +12,8 @@ import {
   Reply,
 } from "lucide-react";
 
+import { InternalNoteForm } from "@/components/app/internal-note-form";
+import { TicketForwardSheet } from "@/components/app/ticket-forward-sheet";
 import { TicketReplyForm } from "@/components/app/ticket-reply-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,11 +61,15 @@ type TimelineAttachment = {
 
 type TicketTimelineProps = {
   cannedResponses: CannedResponse[];
+  currentUserId: string | null;
   description: string | null;
+  mentionUsers: MentionUser[];
   messages: TimelineMessage[];
   participants: TimelineParticipant[];
   supportEmail: string;
   ticketId: string;
+  ticketNumber: number;
+  ticketSubject: string;
 };
 
 type CannedResponse = {
@@ -78,6 +84,12 @@ type TimelineParticipant = {
   email: string;
   name: string | null;
   role: TicketParticipantRole;
+};
+
+type MentionUser = {
+  email: string;
+  id: string;
+  name: string | null;
 };
 
 type TimelineDetailMode = "expanded" | "collapsed";
@@ -142,6 +154,134 @@ function getCollapsedPreview(body: string) {
 
 function normalizeMessageBody(body: string | null | undefined) {
   return (body ?? "").replace(/\r\n/g, "\n").trim();
+}
+
+function normalizeActivityBody(body: string | null | undefined) {
+  return normalizeMessageBody(body)
+    .replace(/(?:&#x20;|&#32;|&nbsp;)+$/gi, "")
+    .trim();
+}
+
+type CompactTimelineActivity = {
+  actor: string | null;
+  changeFrom?: string;
+  changeTo?: string;
+  detail: string;
+  label: string;
+};
+
+function getCompactTimelineActivity(
+  message: TimelineMessage,
+): CompactTimelineActivity | null {
+  if (
+    message.visibility !== MessageVisibility.INTERNAL ||
+    message.attachments.length > 0
+  ) {
+    return null;
+  }
+
+  const body = normalizeActivityBody(message.body);
+  const isSystemMessage = message.authorType === MessageAuthorType.SYSTEM;
+
+  if (
+    isSystemMessage &&
+    body ===
+    "Customer confirmation auto-reply skipped because SUPPORT_AUTO_REPLY_ENABLED=false."
+  ) {
+    return {
+      actor: null,
+      detail: "Customer confirmation auto-reply skipped",
+      label: "Auto-reply",
+    };
+  }
+
+  const statusMatch = body.match(
+    /^(.+?) changed status from (.+?) to (.+?)\.$/,
+  );
+
+  if (isSystemMessage && statusMatch) {
+    return {
+      actor: formatCompactActor(statusMatch[1]),
+      changeFrom: statusMatch[2],
+      changeTo: statusMatch[3],
+      detail: "",
+      label: "Status",
+    };
+  }
+
+  const assigneeMatch = body.match(
+    /^(.+?) changed assignee from (.+?) to (.+?)\.$/,
+  );
+
+  if (isSystemMessage && assigneeMatch) {
+    return {
+      actor: formatCompactActor(assigneeMatch[1]),
+      changeFrom: formatCompactActor(assigneeMatch[2]),
+      changeTo: formatCompactActor(assigneeMatch[3]),
+      detail: "",
+      label: "Assignee",
+    };
+  }
+
+  const priorityMatch = body.match(
+    /^(.+?) changed priority from (.+?) to (.+?)\.$/,
+  );
+
+  if (isSystemMessage && priorityMatch) {
+    return {
+      actor: formatCompactActor(priorityMatch[1]),
+      changeFrom: priorityMatch[2],
+      changeTo: priorityMatch[3],
+      detail: "",
+      label: "Priority",
+    };
+  }
+
+  const autoReopenMatch = body.match(
+    /^Ticket reopened automatically because (.+?) replied to a resolved ticket\.$/,
+  );
+
+  if (isSystemMessage && autoReopenMatch) {
+    return {
+      actor: null,
+      changeFrom: formatCompactActor(autoReopenMatch[1]),
+      detail: "",
+      label: "Reopened",
+    };
+  }
+
+  const automatedInboundMatch = body.match(
+    /^Inbound email appears automated \((.+?)\)\. Customer confirmation auto-reply was suppressed to prevent response loops\.$/,
+  );
+
+  if (isSystemMessage && automatedInboundMatch) {
+    return {
+      actor: null,
+      changeFrom: automatedInboundMatch[1],
+      detail: "",
+      label: "Automated inbound",
+    };
+  }
+
+  const forwardedMatch = body.match(
+    /^Forwarded ticket to (.+?)\.\n\nMode: (.+?)\.$/,
+  );
+
+  if (forwardedMatch) {
+    return {
+      actor: formatCompactActor(getMessageAuthor(message)),
+      changeFrom: forwardedMatch[1],
+      changeTo: forwardedMatch[2],
+      detail: "",
+      label: "Forwarded",
+    };
+  }
+
+  return null;
+}
+
+function formatCompactActor(value: string) {
+  return value.replace(/\s+<[^>]+>$/, "").trim();
 }
 
 function formatBytes(sizeBytes: number) {
@@ -776,6 +916,106 @@ function MessageViewToggle({
   );
 }
 
+function CompactTimelineActivityRow({
+  activity,
+  createdAt,
+}: {
+  activity: CompactTimelineActivity;
+  createdAt: string;
+}) {
+  const isAssignmentChange =
+    activity.label === "Assignee" && activity.changeFrom && activity.changeTo;
+  const isStatusChange =
+    activity.label === "Status" && activity.changeFrom && activity.changeTo;
+  const isPriorityChange =
+    activity.label === "Priority" && activity.changeFrom && activity.changeTo;
+  const isAutomaticReopen =
+    activity.label === "Reopened" && activity.changeFrom;
+  const isAutomatedInbound =
+    activity.label === "Automated inbound" && activity.changeFrom;
+  const isForwarded =
+    activity.label === "Forwarded" && activity.changeFrom && activity.changeTo;
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-md bg-zinc-50 px-2 py-1.5 text-xs text-muted-foreground ring-1 ring-zinc-100">
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        {isAutomaticReopen ? (
+          <span className="min-w-0 truncate text-zinc-700">
+            Ticket reopened automatically because{" "}
+            <strong className="font-semibold text-zinc-800">
+              {activity.changeFrom}
+            </strong>{" "}
+            replied to a resolved ticket
+          </span>
+        ) : isAutomatedInbound ? (
+          <span className="min-w-0 truncate text-zinc-700">
+            Automated inbound detected:{" "}
+            <strong className="font-semibold text-zinc-800">
+              {activity.changeFrom}
+            </strong>
+            . Auto-reply suppressed.
+          </span>
+        ) : isForwarded ? (
+          <span className="min-w-0 truncate text-zinc-700">
+            {activity.actor ?? "System"} forwarded ticket to{" "}
+            <strong className="font-semibold text-zinc-800">
+              {activity.changeFrom}
+            </strong>{" "}
+            ({activity.changeTo})
+          </span>
+        ) : isAssignmentChange || isStatusChange || isPriorityChange ? (
+          <span className="min-w-0 truncate text-zinc-700">
+            {activity.actor ?? "System"} changed{" "}
+            {isAssignmentChange
+              ? "assignment"
+              : isPriorityChange
+                ? "priority"
+                : "status"}{" "}
+            from{" "}
+            <strong className="font-semibold text-zinc-800">
+              {activity.changeFrom}
+            </strong>{" "}
+            {"\u2192"}{" "}
+            <strong className="font-semibold text-zinc-800">
+              {activity.changeTo}
+            </strong>
+          </span>
+        ) : activity.changeFrom && activity.changeTo ? (
+          <span className="min-w-0 truncate text-zinc-700">
+            <span className="font-medium text-zinc-600">{activity.label}</span>{" "}
+            <strong className="font-semibold text-zinc-800">
+              {activity.changeFrom}
+            </strong>{" "}
+            {"\u2192"}{" "}
+            <strong className="font-semibold text-zinc-800">
+              {activity.changeTo}
+            </strong>
+          </span>
+        ) : (
+          <span className="min-w-0 truncate text-zinc-700">
+            {activity.detail}
+          </span>
+        )}
+        {activity.actor &&
+        !isAssignmentChange &&
+        !isStatusChange &&
+        !isPriorityChange &&
+        !isAutomaticReopen &&
+        !isAutomatedInbound &&
+        !isForwarded ? (
+          <>
+            <span aria-hidden="true">·</span>
+            <span className="truncate">{activity.actor}</span>
+          </>
+        ) : null}
+      </span>
+      <time className="ml-auto shrink-0 truncate text-right">
+        {formatDate(createdAt)}
+      </time>
+    </div>
+  );
+}
+
 function useSanitizedEmailHtml(
   html: string | null,
   options: { simplify?: boolean } = {},
@@ -879,11 +1119,15 @@ function isSafeUrl(value: string) {
 
 export function TicketTimeline({
   cannedResponses,
+  currentUserId,
   description,
+  mentionUsers,
   messages,
   participants,
   supportEmail,
   ticketId,
+  ticketNumber,
+  ticketSubject,
 }: TicketTimelineProps) {
   const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
   const [detailMode, setDetailMode] =
@@ -904,7 +1148,9 @@ export function TicketTimeline({
   const timelineItemIds = useMemo(
     () => [
       ...(displayDescription ? [descriptionId] : []),
-      ...messages.map((message) => message.id),
+      ...messages
+        .filter((message) => !getCompactTimelineActivity(message))
+        .map((message) => message.id),
     ],
     [displayDescription, messages],
   );
@@ -964,22 +1210,36 @@ export function TicketTimeline({
   return (
     <Card className="min-w-0 rounded-lg border-zinc-200 bg-white shadow-sm">
       <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-3 text-base">
+        <CardTitle className="flex flex-wrap items-center justify-between gap-3 text-base">
           <span className="flex items-center gap-2">
             <MessageSquareText className="size-4 text-cyan-700" />
             Timeline
           </span>
-          {timelineItemIds.length > 0 ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="bg-white"
-              onClick={toggleAll}
-            >
-              {allCollapsed || hasCollapsed ? "Expand all" : "Collapse all"}
-            </Button>
-          ) : null}
+          <span className="flex flex-wrap items-center justify-end gap-2">
+            <InternalNoteForm
+              cannedResponses={cannedResponses}
+              currentUserId={currentUserId}
+              mentionUsers={mentionUsers}
+              ticketId={ticketId}
+            />
+            <TicketForwardSheet
+              cannedResponses={cannedResponses}
+              ticketId={ticketId}
+              ticketNumber={ticketNumber}
+              ticketSubject={ticketSubject}
+            />
+            {timelineItemIds.length > 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="bg-white"
+                onClick={toggleAll}
+              >
+                {allCollapsed || hasCollapsed ? "Expand all" : "Collapse all"}
+              </Button>
+            ) : null}
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="min-w-0 space-y-4">
@@ -1022,8 +1282,19 @@ export function TicketTimeline({
         ) : null}
 
         {messages.map((message, index) => {
+          const compactActivity = getCompactTimelineActivity(message);
           const isCollapsed = collapsedIds.includes(message.id);
           const messageViewMode = messageViewModes[message.id] ?? "formatted";
+
+          if (compactActivity) {
+            return (
+              <CompactTimelineActivityRow
+                key={message.id}
+                activity={compactActivity}
+                createdAt={message.createdAt}
+              />
+            );
+          }
 
           return (
             <div

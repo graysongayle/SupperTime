@@ -10,7 +10,7 @@ import {
   Underline,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import {
   deleteCannedResponse,
@@ -175,6 +175,12 @@ export function CannedResponseForm({ template }: CannedResponseFormProps) {
   const [isPending, startTransition] = useTransition();
   const initialHtml =
     template?.bodyHtml ?? renderPlainTextAsHtml(template?.body ?? "");
+
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.innerHTML = initialHtml;
+    }
+  }, [initialHtml, template?.id]);
 
   function runEditorCommand(command: string, value?: string) {
     editorRef.current?.focus();
@@ -399,7 +405,6 @@ export function CannedResponseForm({ template }: CannedResponseFormProps) {
         suppressContentEditableWarning
         data-placeholder="Write the reusable response."
         className="min-h-36 rounded-lg border border-input bg-background px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 empty:before:pointer-events-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)] [&_a]:text-cyan-700 [&_a]:underline [&_ol]:ml-5 [&_ol]:list-decimal [&_ul]:ml-5 [&_ul]:list-disc"
-        dangerouslySetInnerHTML={{ __html: initialHtml }}
         onPaste={handlePaste}
       />
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

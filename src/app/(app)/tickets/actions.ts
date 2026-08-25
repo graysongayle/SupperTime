@@ -32,6 +32,7 @@ import {
   getAutomatedReplyHeaders,
   isSupportAutoReplyEnabled,
   sendSupportEmail,
+  textToHtml,
 } from "@/lib/support-email";
 
 const validStatuses = new Set<TicketStatusValue>(Object.values(TicketStatus));
@@ -640,10 +641,17 @@ function mentionAliasesForUser(user: { email: string; name: string | null }) {
   return aliases;
 }
 
-async function resolveMentionedUsers(body: string, actorId: string) {
+async function resolveMentionedUsers(
+  body: string,
+  actorId: string,
+  mentionedUserIds: string[] = [],
+) {
   const handles = extractMentionHandles(body);
+  const mentionedUserIdSet = new Set(
+    mentionedUserIds.map((id) => id.trim()).filter(Boolean),
+  );
 
-  if (handles.length === 0) {
+  if (handles.length === 0 && mentionedUserIdSet.size === 0) {
     return [];
   }
 
@@ -666,6 +674,10 @@ async function resolveMentionedUsers(body: string, actorId: string) {
   });
 
   return users.filter((user) => {
+    if (mentionedUserIdSet.has(user.id)) {
+      return true;
+    }
+
     const aliases = mentionAliasesForUser(user);
     return Array.from(handleSet).some((handle) => aliases.has(handle));
   });
@@ -985,12 +997,21 @@ export async function addInternalNote(formData: FormData) {
   const actor = await requireTicketUser();
   const ticketId = requiredString(formData, "ticketId");
   const body = requiredString(formData, "body");
+  const submittedHtmlBody = optionalString(formData, "bodyHtml");
+  const bodyHtml = submittedHtmlBody
+    ? sanitizeSubmittedReplyHtml(submittedHtmlBody)
+    : null;
+  const mentionedUserIds = formData
+    .getAll("mentionedUserId")
+    .map((value) => String(value).trim())
+    .filter(Boolean);
 
   const ticket = await prisma.$transaction(async (tx) => {
     await tx.ticketMessage.create({
       data: {
         ticketId,
         body,
+        bodyHtml,
         authorType: MessageAuthorType.AGENT,
         visibility: MessageVisibility.INTERNAL,
         agentId: actor.id,
@@ -1012,7 +1033,11 @@ export async function addInternalNote(formData: FormData) {
     });
   });
 
-  const mentionedUsers = await resolveMentionedUsers(body, actor.id);
+  const mentionedUsers = await resolveMentionedUsers(
+    body,
+    actor.id,
+    mentionedUserIds,
+  );
 
   await Promise.all(
     mentionedUsers.map((mentionedUser) =>
@@ -1284,6 +1309,11 @@ export async function forwardTicket(formData: FormData) {
   const ticketId = requiredString(formData, "ticketId");
   const toRecipients = parseEmailList(requiredString(formData, "to"));
   const note = optionalString(formData, "note");
+  const submittedNoteHtml = optionalString(formData, "noteHtml");
+  const noteHtml =
+    note && submittedNoteHtml
+      ? sanitizeSubmittedReplyHtml(submittedNoteHtml)
+      : null;
   const mode = requiredString(formData, "mode");
   const subject =
     optionalString(formData, "subject") ?? "Forwarded support ticket";
@@ -1344,21 +1374,30 @@ export async function forwardTicket(formData: FormData) {
     to: toRecipients,
   });
 
+  const forwardedTicket = {
+    assignedTo: ticket.assignedTo,
+    customer: ticket.customer,
+    description: ticket.description,
+    id: ticket.id,
+    messages: ticket.messages,
+    number: ticket.number,
+    priority: ticket.priority,
+    status: ticket.status,
+    subject: ticket.subject,
+  };
   const textBody = buildForwardedTicketBody({
     mode,
     note,
-    ticket: {
-      assignedTo: ticket.assignedTo,
-      customer: ticket.customer,
-      description: ticket.description,
-      id: ticket.id,
-      messages: ticket.messages,
-      number: ticket.number,
-      priority: ticket.priority,
-      status: ticket.status,
-      subject: ticket.subject,
-    },
+    ticket: forwardedTicket,
   });
+  const htmlBody = noteHtml
+    ? buildForwardedTicketHtmlBody({
+        mode,
+        noteHtml,
+        ticket: forwardedTicket,
+        textBody,
+      })
+    : undefined;
   const emailReplyToken = ticket.emailReplyToken ?? createEmailReplyToken();
 
   if (!ticket.emailReplyToken) {
@@ -1390,6 +1429,7 @@ export async function forwardTicket(formData: FormData) {
     },
     replyTo: buildTicketReplyAddress(ticket.id, emailReplyToken),
     subject,
+    htmlBody,
     textBody,
     to: toRecipients.join(", "),
   });
@@ -1424,6 +1464,14 @@ export async function forwardTicket(formData: FormData) {
         ]
           .filter(Boolean)
           .join("\n"),
+        bodyHtml: noteHtml
+          ? [
+              `<p>${escapeHtml(`Forwarded ticket to ${recipientList}.`)}</p>`,
+              `<p>${escapeHtml(`Mode: ${modeLabel}`)}</p>`,
+              "<p><strong>Note:</strong></p>",
+              noteHtml,
+            ].join("")
+          : null,
         authorType: MessageAuthorType.AGENT,
         visibility: MessageVisibility.INTERNAL,
         agentId: actor.id,
@@ -2148,6 +2196,42 @@ function buildForwardedTicketBody({
   }
 
   return sections.filter(Boolean).join("\n");
+}
+
+function buildForwardedTicketHtmlBody({
+  mode,
+  noteHtml,
+  textBody,
+  ticket,
+}: {
+  mode: string;
+  noteHtml: string;
+  textBody: string;
+  ticket: Parameters<typeof buildForwardedTicketBody>[0]["ticket"];
+}) {
+  if (mode !== "link") {
+    return textToHtml(textBody);
+  }
+
+  const assignee = ticket.assignedTo
+    ? `${ticket.assignedTo.name ?? ticket.assignedTo.email} <${ticket.assignedTo.email}>`
+    : "Unassigned";
+  const summaryLines = [
+    `Ticket #${ticket.number}: ${ticket.subject}`,
+    `Status: ${statusLabels[ticket.status]}`,
+    `Priority: ${priorityLabels[ticket.priority]}`,
+    `Customer: ${ticket.customer.name ?? ticket.customer.email} <${ticket.customer.email}>`,
+    `Assignee: ${assignee}`,
+    `Link: ${buildTicketUrl(ticket.id)}`,
+  ];
+
+  return [
+    "<p><strong>Note:</strong></p>",
+    noteHtml,
+    "<p>",
+    summaryLines.map(escapeHtml).join("<br>"),
+    "</p>",
+  ].join("");
 }
 
 function formatForwardedMessage(message: {

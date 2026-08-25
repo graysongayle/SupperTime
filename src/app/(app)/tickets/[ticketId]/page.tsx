@@ -17,9 +17,7 @@ import {
   removeTicketTag,
 } from "@/app/(app)/tickets/actions";
 import { DeleteTicketForm } from "@/components/app/delete-ticket-form";
-import { InternalNoteForm } from "@/components/app/internal-note-form";
 import { TicketPropertiesForm } from "@/components/app/ticket-properties-form";
-import { TicketForwardSheet } from "@/components/app/ticket-forward-sheet";
 import { TicketTimeline } from "@/components/app/ticket-timeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -580,11 +578,6 @@ export default async function TicketDetailPage({
               <ChevronRight className="size-4" />
             </Button>
           )}
-          <TicketForwardSheet
-            ticketId={ticket.id}
-            ticketNumber={ticket.number}
-            ticketSubject={ticket.subject}
-          />
         </div>
       </div>
 
@@ -592,7 +585,9 @@ export default async function TicketDetailPage({
         <div className="min-w-0 space-y-5">
           <TicketTimeline
             cannedResponses={cannedResponses}
+            currentUserId={viewer?.id ?? null}
             description={ticket.description}
+            mentionUsers={agents}
             messages={ticket.messages.map((message) => ({
               id: message.id,
               agent: message.agent,
@@ -623,20 +618,9 @@ export default async function TicketDetailPage({
             }))}
             supportEmail={supportSender.email}
             ticketId={ticket.id}
+            ticketNumber={ticket.number}
+            ticketSubject={ticket.subject}
           />
-
-          <Card className="min-w-0 rounded-lg border-zinc-200 bg-white shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base">Add internal note</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <InternalNoteForm
-                currentUserId={viewer?.id ?? null}
-                mentionUsers={agents}
-                ticketId={ticket.id}
-              />
-            </CardContent>
-          </Card>
         </div>
 
         <aside className="min-w-0 space-y-5">
