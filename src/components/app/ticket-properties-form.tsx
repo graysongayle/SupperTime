@@ -1,13 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
-import {
-  updateTicketAssignment,
-  updateTicketPriority,
-  updateTicketStatus,
-} from "@/app/(app)/tickets/actions";
+import { updateTicketProperties } from "@/app/(app)/tickets/actions";
 import { StatusDefinitionsMenu } from "@/components/app/status-definitions-menu";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
@@ -50,23 +46,44 @@ export function TicketPropertiesForm({
 }: TicketPropertiesFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [currentAssignedToId, setCurrentAssignedToId] = useState(
+    assignedToId ?? "",
+  );
+  const [currentPriority, setCurrentPriority] = useState(priority);
+  const [currentStatus, setCurrentStatus] = useState(status);
 
-  function submitAction(
-    action: (formData: FormData) => Promise<{ ok: boolean; message: string }>,
-    formData: FormData,
-    fallbackMessage: string,
-  ) {
+  useEffect(() => {
+    setCurrentAssignedToId(assignedToId ?? "");
+  }, [assignedToId]);
+
+  useEffect(() => {
+    setCurrentPriority(priority);
+  }, [priority]);
+
+  useEffect(() => {
+    setCurrentStatus(status);
+  }, [status]);
+
+  const hasChanges =
+    currentAssignedToId !== (assignedToId ?? "") ||
+    currentPriority !== priority ||
+    currentStatus !== status;
+
+  function submitAction(formData: FormData) {
     startTransition(async () => {
       try {
-        const result = await action(formData);
+        const result = await updateTicketProperties(formData);
 
         toast({
           variant: "success",
           title: "Saved",
-          description: result.message || fallbackMessage,
+          description: result.message || "Ticket properties updated.",
         });
         router.refresh();
       } catch (error) {
+        setCurrentAssignedToId(assignedToId ?? "");
+        setCurrentPriority(priority);
+        setCurrentStatus(status);
         toast({
           variant: "destructive",
           title: "Save failed",
@@ -78,13 +95,8 @@ export function TicketPropertiesForm({
   }
 
   return (
-    <div className="space-y-4">
-      <form
-        action={(formData) =>
-          submitAction(updateTicketStatus, formData, "Ticket status updated.")
-        }
-        className="space-y-2"
-      >
+    <form action={submitAction} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
         <input type="hidden" name="ticketId" value={ticketId} />
         <div className="flex items-center gap-1">
           <label className="text-sm font-medium">Status</label>
@@ -93,7 +105,10 @@ export function TicketPropertiesForm({
         <div className="flex gap-2">
           <select
             name="status"
-            defaultValue={status}
+            value={currentStatus}
+            onChange={(event) =>
+              setCurrentStatus(event.target.value as TicketStatus)
+            }
             className="h-9 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-2 text-sm shadow-xs"
           >
             {Object.values(TicketStatus).map((status) => (
@@ -102,24 +117,18 @@ export function TicketPropertiesForm({
               </option>
             ))}
           </select>
-          <Button type="submit" size="sm" disabled={isPending}>
-            Save
-          </Button>
         </div>
-      </form>
+      </div>
 
-      <form
-        action={(formData) =>
-          submitAction(updateTicketPriority, formData, "Ticket priority updated.")
-        }
-        className="space-y-2"
-      >
-        <input type="hidden" name="ticketId" value={ticketId} />
+      <div className="flex flex-col gap-2">
         <label className="text-sm font-medium">Priority</label>
         <div className="flex gap-2">
           <select
             name="priority"
-            defaultValue={priority}
+            value={currentPriority}
+            onChange={(event) =>
+              setCurrentPriority(event.target.value as TicketPriority)
+            }
             className="h-9 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-2 text-sm shadow-xs"
           >
             {Object.values(TicketPriority).map((priority) => (
@@ -128,24 +137,16 @@ export function TicketPropertiesForm({
               </option>
             ))}
           </select>
-          <Button type="submit" size="sm" disabled={isPending}>
-            Save
-          </Button>
         </div>
-      </form>
+      </div>
 
-      <form
-        action={(formData) =>
-          submitAction(updateTicketAssignment, formData, "Ticket assignee updated.")
-        }
-        className="space-y-2"
-      >
-        <input type="hidden" name="ticketId" value={ticketId} />
+      <div className="flex flex-col gap-2">
         <label className="text-sm font-medium">Assignee</label>
         <div className="flex gap-2">
           <select
             name="assignedToId"
-            defaultValue={assignedToId ?? ""}
+            value={currentAssignedToId}
+            onChange={(event) => setCurrentAssignedToId(event.target.value)}
             className="h-9 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-2 text-sm shadow-xs"
           >
             <option value="">Unassigned</option>
@@ -155,11 +156,12 @@ export function TicketPropertiesForm({
               </option>
             ))}
           </select>
-          <Button type="submit" size="sm" disabled={isPending}>
-            Save
-          </Button>
         </div>
-      </form>
-    </div>
+      </div>
+
+      <Button type="submit" size="sm" disabled={isPending || !hasChanges}>
+        Save
+      </Button>
+    </form>
   );
 }

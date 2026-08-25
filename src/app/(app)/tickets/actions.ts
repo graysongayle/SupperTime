@@ -1574,6 +1574,178 @@ export async function updateTicketStatus(formData: FormData) {
   };
 }
 
+export async function updateTicketProperties(formData: FormData) {
+  const actor = await requireTicketUser();
+  const ticketId = requiredString(formData, "ticketId");
+  const status = String(formData.get("status") ?? "") as TicketStatusValue;
+  const priority = String(
+    formData.get("priority") ?? "",
+  ) as TicketPriorityValue;
+  const assignedToId = optionalString(formData, "assignedToId");
+
+  if (!validStatuses.has(status)) {
+    throw new Error("Invalid status.");
+  }
+
+  if (!validPriorities.has(priority)) {
+    throw new Error("Invalid priority.");
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const current = await tx.ticket.findUnique({
+      where: {
+        id: ticketId,
+      },
+      select: {
+        assignedToId: true,
+        assignedTo: {
+          select: {
+            email: true,
+            name: true,
+          },
+        },
+        priority: true,
+        status: true,
+      },
+    });
+
+    if (!current) {
+      throw new Error("Ticket not found.");
+    }
+
+    const statusChanged = current.status !== status;
+    const priorityChanged = current.priority !== priority;
+    const assignmentChanged = current.assignedToId !== assignedToId;
+
+    if (!statusChanged && !priorityChanged && !assignmentChanged) {
+      return {
+        assignmentChanged,
+        changedCount: 0,
+        previousAssignedToId: current.assignedToId,
+        ticket: null,
+      };
+    }
+
+    const updated = await tx.ticket.update({
+      where: {
+        id: ticketId,
+      },
+      data: {
+        assignedToId: assignmentChanged ? assignedToId : undefined,
+        priority: priorityChanged ? priority : undefined,
+        status: statusChanged ? status : undefined,
+        resolvedAt:
+          statusChanged && status === TicketStatus.RESOLVED
+            ? new Date()
+            : undefined,
+        closedAt:
+          statusChanged && status === TicketStatus.CLOSED
+            ? new Date()
+            : undefined,
+      },
+      select: {
+        assignedTo: {
+          select: {
+            email: true,
+            id: true,
+            name: true,
+          },
+        },
+        id: true,
+        number: true,
+        subject: true,
+      },
+    });
+
+    if (statusChanged) {
+      await tx.ticketStatusHistory.create({
+        data: {
+          from: current.status,
+          to: status,
+          ticketId,
+          changedById: actor.id,
+        },
+      });
+
+      await tx.ticketMessage.create({
+        data: {
+          ticketId,
+          authorType: MessageAuthorType.SYSTEM,
+          body: `${formatActor(actor)} changed status from ${statusLabels[current.status]} to ${statusLabels[status]}.`,
+          visibility: MessageVisibility.INTERNAL,
+        },
+      });
+    }
+
+    if (priorityChanged) {
+      await tx.ticketMessage.create({
+        data: {
+          ticketId,
+          authorType: MessageAuthorType.SYSTEM,
+          body: `${formatActor(actor)} changed priority from ${priorityLabels[current.priority]} to ${priorityLabels[priority]}.`,
+          visibility: MessageVisibility.INTERNAL,
+        },
+      });
+    }
+
+    if (assignmentChanged) {
+      await tx.ticketMessage.create({
+        data: {
+          ticketId,
+          authorType: MessageAuthorType.SYSTEM,
+          body: `${formatActor(actor)} changed assignee from ${formatNullableUser(current.assignedTo)} to ${formatNullableUser(updated.assignedTo)}.`,
+          visibility: MessageVisibility.INTERNAL,
+        },
+      });
+    }
+
+    return {
+      assignmentChanged,
+      changedCount: [statusChanged, priorityChanged, assignmentChanged].filter(
+        Boolean,
+      ).length,
+      previousAssignedToId: current.assignedToId,
+      ticket: updated,
+    };
+  });
+
+  if (
+    result.assignmentChanged &&
+    assignedToId &&
+    assignedToId !== actor.id &&
+    assignedToId !== result.previousAssignedToId &&
+    result.ticket?.assignedTo
+  ) {
+    await sendAssignmentNotification({
+      actorEmail: actor.email,
+      actorName: actor.name,
+      assigneeEmail: result.ticket.assignedTo.email,
+      assigneeName: result.ticket.assignedTo.name,
+      ticketId: result.ticket.id,
+      ticketNumber: result.ticket.number,
+      ticketSubject: result.ticket.subject,
+    });
+  }
+
+  revalidatePath(`/tickets/${ticketId}`);
+  revalidatePath("/tickets");
+
+  if (result.changedCount === 0) {
+    return {
+      ok: true,
+      message: "No property changes to save.",
+    };
+  }
+
+  return {
+    ok: true,
+    message:
+      result.changedCount === 1
+        ? "Updated 1 ticket property."
+        : `Updated ${result.changedCount} ticket properties.`,
+  };
+}
+
 function getSelectedTicketIds(formData: FormData) {
   return Array.from(new Set(formData.getAll("ticketIds")))
     .map((value) => String(value).trim())
