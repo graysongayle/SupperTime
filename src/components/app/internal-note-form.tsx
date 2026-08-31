@@ -202,6 +202,66 @@ function getMentionHandle(user: MentionUser) {
   return localPart.replace(/[^a-z0-9._+-]/g, "") || user.email.toLowerCase();
 }
 
+function createMentionBadgeElement(user: MentionUser, onRemove: () => void) {
+  const handle = getMentionHandle(user);
+  const badge = document.createElement("span");
+  const label = document.createElement("span");
+  const removeButton = document.createElement("button");
+
+  badge.setAttribute("contenteditable", "false");
+  badge.setAttribute("data-mention-chip", "true");
+  badge.setAttribute("data-mention-user-id", user.id);
+  badge.setAttribute(
+    "title",
+    user.name ? `${user.name} <${user.email}>` : user.email,
+  );
+  badge.className =
+    "mx-0.5 inline-flex h-5 max-w-44 select-none items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2 align-baseline text-xs font-medium text-cyan-800";
+  label.className = "min-w-0 truncate";
+  label.textContent = `@${handle}`;
+  removeButton.type = "button";
+  removeButton.setAttribute("aria-label", `Remove @${handle}`);
+  removeButton.setAttribute("tabindex", "-1");
+  removeButton.className =
+    "-mr-1 inline-flex size-4 shrink-0 items-center justify-center rounded-full text-cyan-700 hover:bg-cyan-100 hover:text-cyan-950";
+  removeButton.innerHTML =
+    '<svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+  removeButton.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  removeButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    const parent = badge.parentNode;
+    const nextSibling = badge.nextSibling;
+
+    if (nextSibling?.nodeType === Node.TEXT_NODE) {
+      nextSibling.textContent = (nextSibling.textContent ?? "").replace(/^ /, "");
+    }
+
+    badge.remove();
+
+    if (parent) {
+      const range = document.createRange();
+      const selection = window.getSelection();
+
+      if (nextSibling && nextSibling.parentNode === parent) {
+        range.setStartBefore(nextSibling);
+      } else {
+        range.selectNodeContents(parent);
+        range.collapse(false);
+      }
+
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+
+    onRemove();
+  });
+  badge.append(label, removeButton);
+
+  return badge;
+}
+
 function getUserSearchText(user: MentionUser) {
   return [
     user.name,
@@ -227,6 +287,40 @@ function findActiveMention(value: string, caret: number): ActiveMention | null {
     query: match[2].toLowerCase(),
     start: caret - match[2].length - 1,
   };
+}
+
+function findActiveMentionAtCaret(container: HTMLElement): ActiveMention | null {
+  const selection = window.getSelection();
+
+  if (!selection || selection.rangeCount === 0) {
+    return findActiveMention(container.innerText, container.innerText.length);
+  }
+
+  const range = selection.getRangeAt(0);
+
+  if (!container.contains(range.endContainer)) {
+    return findActiveMention(container.innerText, container.innerText.length);
+  }
+
+  const caret = getCaretTextOffset(container);
+
+  if (range.endContainer.nodeType === Node.TEXT_NODE) {
+    const textBeforeCaret = (range.endContainer.textContent ?? "").slice(
+      0,
+      range.endOffset,
+    );
+    const match = /(^|[\s([{])@([a-zA-Z0-9._+-]{0,64})$/.exec(textBeforeCaret);
+
+    if (match) {
+      return {
+        end: caret,
+        query: match[2].toLowerCase(),
+        start: caret - match[2].length - 1,
+      };
+    }
+  }
+
+  return findActiveMention(container.innerText, caret);
 }
 
 function getCaretTextOffset(container: HTMLElement) {
@@ -277,6 +371,43 @@ function createTextRange(container: HTMLElement, start: number, end: number) {
   return range;
 }
 
+function createActiveMentionRangeAtCaret(
+  container: HTMLElement,
+  activeMention: ActiveMention,
+) {
+  const selection = window.getSelection();
+
+  if (!selection || selection.rangeCount === 0) {
+    return createTextRange(container, activeMention.start, activeMention.end);
+  }
+
+  const selectionRange = selection.getRangeAt(0);
+
+  if (
+    container.contains(selectionRange.endContainer) &&
+    selectionRange.endContainer.nodeType === Node.TEXT_NODE
+  ) {
+    const textNode = selectionRange.endContainer;
+    const textBeforeCaret = (textNode.textContent ?? "").slice(
+      0,
+      selectionRange.endOffset,
+    );
+    const match = /(^|[\s([{])@([a-zA-Z0-9._+-]{0,64})$/.exec(textBeforeCaret);
+
+    if (match) {
+      const range = document.createRange();
+      range.setStart(
+        textNode,
+        selectionRange.endOffset - match[2].length - 1,
+      );
+      range.setEnd(textNode, selectionRange.endOffset);
+      return range;
+    }
+  }
+
+  return createTextRange(container, activeMention.start, activeMention.end);
+}
+
 export function InternalNoteForm({
   cannedResponses = [],
   currentUserId,
@@ -323,8 +454,7 @@ export function InternalNoteForm({
       return;
     }
 
-    const text = editor.innerText.replace(/\u00a0/g, " ");
-    setActiveMention(findActiveMention(text, getCaretTextOffset(editor)));
+    setActiveMention(findActiveMentionAtCaret(editor));
     setSelectedIndex(0);
   }
 
@@ -347,11 +477,19 @@ export function InternalNoteForm({
       return;
     }
 
-    const mention = `@${getMentionHandle(user)} `;
-    const range = createTextRange(editor, activeMention.start, activeMention.end);
+    const range = createActiveMentionRangeAtCaret(editor, activeMention);
+    const badge = createMentionBadgeElement(user, () => {
+      syncEditorState();
+      editor.focus();
+    });
+    const trailingSpace = document.createTextNode(" ");
+    const fragment = document.createDocumentFragment();
+
+    fragment.append(badge, trailingSpace);
     range.deleteContents();
-    range.insertNode(document.createTextNode(mention));
-    range.collapse(false);
+    range.insertNode(fragment);
+    range.setStartAfter(trailingSpace);
+    range.collapse(true);
 
     const selection = window.getSelection();
     selection?.removeAllRanges();

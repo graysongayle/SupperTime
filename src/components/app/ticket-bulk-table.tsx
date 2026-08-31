@@ -1165,7 +1165,7 @@ export function TicketBulkTable({
               </TableHead>
               <TableHead className="w-[170px] text-right">Activity</TableHead>
               {canBulkUpdateStatus ? (
-                <TableHead className="w-[52px] text-right">Actions</TableHead>
+                <TableHead className="w-[70px] pr-5 text-right">Actions</TableHead>
               ) : null}
             </TableRow>
           </TableHeader>
@@ -1294,7 +1294,7 @@ export function TicketBulkTable({
                     ) : null}
                   </TableCell>
                   {canBulkUpdateStatus ? (
-                    <TableCell className="text-right">
+                    <TableCell className="pr-5 text-right">
                       {renderTicketActions(ticket)}
                     </TableCell>
                   ) : null}
