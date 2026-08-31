@@ -13,11 +13,12 @@ import {
 } from "lucide-react";
 
 import {
-  addTicketTag,
+  addTicketTagFormAction,
   removeTicketTag,
 } from "@/app/(app)/tickets/actions";
 import { DeleteTicketForm } from "@/components/app/delete-ticket-form";
 import { TicketPropertiesForm } from "@/components/app/ticket-properties-form";
+import { TicketSubjectForm } from "@/components/app/ticket-subject-form";
 import { TicketTimeline } from "@/components/app/ticket-timeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -537,9 +538,7 @@ export default async function TicketDetailPage({
               {sourceLabels[ticket.source]}
             </span>
           </div>
-          <h1 className="max-w-4xl break-words text-2xl font-semibold tracking-normal text-zinc-950 [overflow-wrap:anywhere]">
-            {ticket.subject}
-          </h1>
+          <TicketSubjectForm subject={ticket.subject} ticketId={ticket.id} />
           <p className="mt-1 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
             {ticket.customer.name ?? ticket.customer.email} · created{" "}
             {formatDate(ticket.createdAt)}
@@ -725,7 +724,7 @@ export default async function TicketDetailPage({
                 ) : null}
               </div>
 
-              <form action={addTicketTag} className="flex gap-2">
+              <form action={addTicketTagFormAction} className="flex gap-2">
                 <input type="hidden" name="ticketId" value={ticket.id} />
                 <input
                   list="available-tags"

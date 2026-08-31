@@ -1574,6 +1574,65 @@ export async function updateTicketStatus(formData: FormData) {
   };
 }
 
+export async function updateTicketSubject(formData: FormData) {
+  const actor = await requireTicketUser();
+  const ticketId = requiredString(formData, "ticketId");
+  const subject = requiredString(formData, "subject");
+
+  const result = await prisma.$transaction(async (tx) => {
+    const current = await tx.ticket.findUnique({
+      where: {
+        id: ticketId,
+      },
+      select: {
+        subject: true,
+      },
+    });
+
+    if (!current) {
+      throw new Error("Ticket not found.");
+    }
+
+    if (current.subject === subject) {
+      return {
+        changed: false,
+      };
+    }
+
+    await tx.ticket.update({
+      where: {
+        id: ticketId,
+      },
+      data: {
+        subject,
+      },
+    });
+
+    await tx.ticketMessage.create({
+      data: {
+        ticketId,
+        authorType: MessageAuthorType.SYSTEM,
+        body: `${formatActor(actor)} changed title from ${current.subject} to ${subject}.`,
+        visibility: MessageVisibility.INTERNAL,
+      },
+    });
+
+    return {
+      changed: true,
+    };
+  });
+
+  revalidatePath(`/tickets/${ticketId}`);
+  revalidatePath("/tickets");
+
+  return {
+    ok: true,
+    message: result.changed
+      ? "Ticket title updated."
+      : "No title change to save.",
+  };
+}
+
 export async function updateTicketProperties(formData: FormData) {
   const actor = await requireTicketUser();
   const ticketId = requiredString(formData, "ticketId");
@@ -1746,6 +1805,30 @@ export async function updateTicketProperties(formData: FormData) {
   };
 }
 
+export async function markTicketUnread(formData: FormData) {
+  await requireTicketUser();
+  const ticketId = requiredString(formData, "ticketId");
+  const markedUnreadAt = new Date();
+
+  const updatedCount = await prisma.$executeRaw`
+    update "Ticket"
+    set "customerResponseUnreadAt" = ${markedUnreadAt}
+    where "id" = ${ticketId}
+  `;
+
+  if (updatedCount === 0) {
+    throw new Error("Ticket not found.");
+  }
+
+  revalidatePath(`/tickets/${ticketId}`);
+  revalidatePath("/tickets");
+
+  return {
+    ok: true,
+    message: "Ticket marked as unread.",
+  };
+}
+
 function getSelectedTicketIds(formData: FormData) {
   return Array.from(new Set(formData.getAll("ticketIds")))
     .map((value) => String(value).trim())
@@ -1828,6 +1911,7 @@ export async function bulkUpdateTicketStatus(formData: FormData) {
     ]);
   }
 
+  changedTickets.forEach((ticket) => revalidatePath(`/tickets/${ticket.id}`));
   revalidatePath("/tickets");
 
   return {
@@ -1836,6 +1920,245 @@ export async function bulkUpdateTicketStatus(formData: FormData) {
       changedTickets.length === 1
         ? "Updated 1 ticket."
         : `Updated ${changedTickets.length} tickets.`,
+  };
+}
+
+export async function bulkUpdateTicketPriority(formData: FormData) {
+  const actor = await requireTicketUser();
+  const ticketIds = getSelectedTicketIds(formData);
+  const priority = String(
+    formData.get("priority") ?? "",
+  ) as TicketPriorityValue;
+
+  if (
+    actor.role !== UserRole.SUPER_ADMIN &&
+    actor.role !== UserRole.MANAGER &&
+    actor.role !== UserRole.AGENT
+  ) {
+    throw new Error("You do not have permission to bulk update tickets.");
+  }
+
+  if (ticketIds.length === 0) {
+    throw new Error("Select at least one ticket.");
+  }
+
+  if (!validPriorities.has(priority)) {
+    throw new Error("Invalid priority.");
+  }
+
+  const tickets = await prisma.ticket.findMany({
+    where: {
+      id: {
+        in: ticketIds,
+      },
+    },
+    select: {
+      id: true,
+      priority: true,
+    },
+  });
+  const changedTickets = tickets.filter(
+    (ticket) => ticket.priority !== priority,
+  );
+
+  if (changedTickets.length > 0) {
+    await prisma.$transaction([
+      prisma.ticket.updateMany({
+        where: {
+          id: {
+            in: changedTickets.map((ticket) => ticket.id),
+          },
+        },
+        data: {
+          priority,
+        },
+      }),
+      prisma.ticketMessage.createMany({
+        data: changedTickets.map((ticket) => ({
+          ticketId: ticket.id,
+          authorType: MessageAuthorType.SYSTEM,
+          body: `${formatActor(actor)} changed priority from ${priorityLabels[ticket.priority]} to ${priorityLabels[priority]}.`,
+          visibility: MessageVisibility.INTERNAL,
+        })),
+      }),
+    ]);
+  }
+
+  changedTickets.forEach((ticket) => revalidatePath(`/tickets/${ticket.id}`));
+  revalidatePath("/tickets");
+
+  return {
+    ok: true,
+    message:
+      changedTickets.length === 1
+        ? "Updated priority on 1 ticket."
+        : `Updated priority on ${changedTickets.length} tickets.`,
+  };
+}
+
+export async function bulkUpdateTicketAssignment(formData: FormData) {
+  const actor = await requireTicketUser();
+  const ticketIds = getSelectedTicketIds(formData);
+  const assignedToId = optionalString(formData, "assignedToId");
+
+  if (
+    actor.role !== UserRole.SUPER_ADMIN &&
+    actor.role !== UserRole.MANAGER &&
+    actor.role !== UserRole.AGENT
+  ) {
+    throw new Error("You do not have permission to bulk update tickets.");
+  }
+
+  if (ticketIds.length === 0) {
+    throw new Error("Select at least one ticket.");
+  }
+
+  const assignee = assignedToId
+    ? await prisma.user.findFirst({
+        where: {
+          id: assignedToId,
+          isActive: true,
+          role: {
+            in: [UserRole.SUPER_ADMIN, UserRole.MANAGER, UserRole.AGENT],
+          },
+        },
+        select: {
+          email: true,
+          id: true,
+          name: true,
+        },
+      })
+    : null;
+
+  if (assignedToId && !assignee) {
+    throw new Error("Invalid assignee.");
+  }
+
+  const tickets = await prisma.ticket.findMany({
+    where: {
+      id: {
+        in: ticketIds,
+      },
+    },
+    select: {
+      assignedToId: true,
+      assignedTo: {
+        select: {
+          email: true,
+          name: true,
+        },
+      },
+      id: true,
+      number: true,
+      subject: true,
+    },
+  });
+  const changedTickets = tickets.filter(
+    (ticket) => ticket.assignedToId !== assignedToId,
+  );
+
+  if (changedTickets.length > 0) {
+    await prisma.$transaction([
+      prisma.ticket.updateMany({
+        where: {
+          id: {
+            in: changedTickets.map((ticket) => ticket.id),
+          },
+        },
+        data: {
+          assignedToId,
+        },
+      }),
+      prisma.ticketMessage.createMany({
+        data: changedTickets.map((ticket) => ({
+          ticketId: ticket.id,
+          authorType: MessageAuthorType.SYSTEM,
+          body: `${formatActor(actor)} changed assignee from ${formatNullableUser(ticket.assignedTo)} to ${formatNullableUser(assignee)}.`,
+          visibility: MessageVisibility.INTERNAL,
+        })),
+      }),
+    ]);
+  }
+
+  if (assignedToId && assignee) {
+    for (const ticket of changedTickets) {
+      if (assignedToId === actor.id || assignedToId === ticket.assignedToId) {
+        continue;
+      }
+
+      await sendAssignmentNotification({
+        actorEmail: actor.email,
+        actorName: actor.name,
+        assigneeEmail: assignee.email,
+        assigneeName: assignee.name,
+        ticketId: ticket.id,
+        ticketNumber: ticket.number,
+        ticketSubject: ticket.subject,
+      });
+    }
+  }
+
+  changedTickets.forEach((ticket) => revalidatePath(`/tickets/${ticket.id}`));
+  revalidatePath("/tickets");
+
+  return {
+    ok: true,
+    message:
+      changedTickets.length === 1
+        ? assignedToId
+          ? "Assigned 1 ticket."
+          : "Unassigned 1 ticket."
+        : assignedToId
+          ? `Assigned ${changedTickets.length} tickets.`
+          : `Unassigned ${changedTickets.length} tickets.`,
+  };
+}
+
+export async function bulkAddTicketTag(formData: FormData) {
+  const actor = await requireTicketUser();
+  const ticketIds = getSelectedTicketIds(formData);
+  const tagId = requiredString(formData, "tagId");
+
+  if (
+    actor.role !== UserRole.SUPER_ADMIN &&
+    actor.role !== UserRole.MANAGER &&
+    actor.role !== UserRole.AGENT
+  ) {
+    throw new Error("You do not have permission to bulk update tickets.");
+  }
+
+  if (ticketIds.length === 0) {
+    throw new Error("Select at least one ticket.");
+  }
+
+  const tag = await prisma.tag.findUnique({
+    where: {
+      id: tagId,
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  if (!tag) {
+    throw new Error("Tag not found.");
+  }
+
+  await prisma.ticketTag.createMany({
+    data: ticketIds.map((ticketId) => ({
+      ticketId,
+      tagId: tag.id,
+    })),
+    skipDuplicates: true,
+  });
+
+  ticketIds.forEach((ticketId) => revalidatePath(`/tickets/${ticketId}`));
+  revalidatePath("/tickets");
+
+  return {
+    ok: true,
+    message: `Added tag "${tag.name}" to selected tickets.`,
   };
 }
 
@@ -2209,6 +2532,15 @@ export async function addTicketTag(formData: FormData) {
 
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/tickets");
+
+  return {
+    ok: true,
+    message: `Added tag "${tag.name}".`,
+  };
+}
+
+export async function addTicketTagFormAction(formData: FormData) {
+  await addTicketTag(formData);
 }
 
 export async function removeTicketTag(formData: FormData) {

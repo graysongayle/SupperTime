@@ -3,23 +3,37 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Paperclip, Trash2, X } from "lucide-react";
+import { MoreHorizontal, Paperclip, Trash2, X } from "lucide-react";
 
 import {
+  addTicketTag,
   bulkDeleteClosedTickets,
+  bulkAddTicketTag,
+  bulkUpdateTicketAssignment,
+  bulkUpdateTicketPriority,
   bulkUpdateTicketStatus,
+  markTicketUnread,
+  updateTicketAssignment,
+  updateTicketPriority,
+  updateTicketStatus,
 } from "@/app/(app)/tickets/actions";
 import { StatusDefinitionsMenu } from "@/components/app/status-definitions-menu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -76,10 +90,24 @@ const priorityLabels: Record<TicketPriorityValue, string> = {
   [TicketPriority.NORMAL]: "Normal",
   [TicketPriority.LOW]: "Low",
 };
+const unassignedAssigneeValue = "unassigned";
+
+type TicketBulkTableAgent = {
+  email: string;
+  id: string;
+  name: string | null;
+};
+
+type TicketBulkTableTag = {
+  color: string | null;
+  id: string;
+  name: string;
+};
 
 type TicketBulkTableTicket = {
   assignedTo: {
     email: string;
+    id: string;
     name: string | null;
   } | null;
   customer: {
@@ -99,6 +127,10 @@ type TicketBulkTableTicket = {
   priority: TicketPriorityValue;
   status: TicketStatusValue;
   subject: string;
+  tagLinks: Array<{
+    tag: TicketBulkTableTag;
+    tagId: string;
+  }>;
   updatedAt: Date | string;
   _count: {
     attachments: number;
@@ -108,12 +140,14 @@ type TicketBulkTableTicket = {
 
 type TicketBulkTableProps = {
   activeStatus: TicketStatusValue | null;
+  agents: TicketBulkTableAgent[];
   canBulkDelete: boolean;
   canBulkUpdateStatus: boolean;
   hasFilters: boolean;
   includeClosed: boolean;
   renderedAt: string;
   returnHref: string;
+  tags: TicketBulkTableTag[];
   tickets: TicketBulkTableTicket[];
 };
 
@@ -162,26 +196,45 @@ function formatOptionalRelativeTime(
 
 export function TicketBulkTable({
   activeStatus,
+  agents,
   canBulkDelete,
   canBulkUpdateStatus,
   hasFilters,
   includeClosed,
   renderedAt,
   returnHref,
+  tags,
   tickets,
 }: TicketBulkTableProps) {
   const router = useRouter();
   const [displayTickets, setDisplayTickets] =
     useState<TicketBulkTableTicket[]>(tickets);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [status, setStatus] = useState<TicketStatusValue | null>(null);
+  const [bulkAssignedToId, setBulkAssignedToId] = useState<string | null>(null);
+  const [bulkPriority, setBulkPriority] =
+    useState<TicketPriorityValue | null>(null);
+  const [bulkStatus, setBulkStatus] = useState<TicketStatusValue | null>(null);
+  const [bulkTagId, setBulkTagId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const allVisibleSelected =
     displayTickets.length > 0 &&
     displayTickets.every((ticket) => selectedSet.has(ticket.id));
   const canSelectTickets = canBulkDelete || canBulkUpdateStatus;
+  const emptyStateColumnCount =
+    (canSelectTickets ? 8 : 7) + (canBulkUpdateStatus ? 1 : 0);
   const selectedCount = selectedIds.length;
+  const bulkAssignee = bulkAssignedToId
+    ? agents.find((agent) => agent.id === bulkAssignedToId) ?? null
+    : null;
+  const bulkTag = bulkTagId
+    ? tags.find((tag) => tag.id === bulkTagId) ?? null
+    : null;
+  const hasBulkUpdates =
+    Boolean(bulkStatus) ||
+    Boolean(bulkPriority) ||
+    bulkAssignedToId !== null ||
+    Boolean(bulkTag);
 
   useEffect(() => {
     setDisplayTickets(tickets);
@@ -213,6 +266,10 @@ export function TicketBulkTable({
 
   function clearSelection() {
     setSelectedIds([]);
+    setBulkAssignedToId(null);
+    setBulkPriority(null);
+    setBulkStatus(null);
+    setBulkTagId(null);
   }
 
   function selectedFormData() {
@@ -225,26 +282,68 @@ export function TicketBulkTable({
     return formData;
   }
 
-  function runBulkStatusUpdate() {
-    if (!status) {
+  function ticketFormData(ticketId: string) {
+    const formData = new FormData();
+    formData.set("ticketId", ticketId);
+    return formData;
+  }
+
+  function clearBulkUpdates() {
+    setBulkAssignedToId(null);
+    setBulkPriority(null);
+    setBulkStatus(null);
+    setBulkTagId(null);
+  }
+
+  function runBulkUpdateApply() {
+    if (!hasBulkUpdates) {
       toast({
         variant: "destructive",
-        title: "Choose a status",
-        description: "Select the status to apply before updating tickets.",
+        title: "Choose an update",
+        description: "Select at least one bulk update before applying.",
       });
       return;
     }
 
     startTransition(async () => {
       try {
-        const formData = selectedFormData();
-        formData.set("status", status);
-        const result = await bulkUpdateTicketStatus(formData);
+        const messages: string[] = [];
+
+        if (bulkStatus) {
+          const formData = selectedFormData();
+          formData.set("status", bulkStatus);
+          const result = await bulkUpdateTicketStatus(formData);
+          messages.push(result.message);
+        }
+
+        if (bulkPriority) {
+          const formData = selectedFormData();
+          formData.set("priority", bulkPriority);
+          const result = await bulkUpdateTicketPriority(formData);
+          messages.push(result.message);
+        }
+
+        if (bulkAssignedToId !== null) {
+          const formData = selectedFormData();
+          formData.set(
+            "assignedToId",
+            bulkAssignedToId === unassignedAssigneeValue ? "" : bulkAssignedToId,
+          );
+          const result = await bulkUpdateTicketAssignment(formData);
+          messages.push(result.message);
+        }
+
+        if (bulkTag) {
+          const formData = selectedFormData();
+          formData.set("tagId", bulkTag.id);
+          const result = await bulkAddTicketTag(formData);
+          messages.push(result.message);
+        }
 
         toast({
           variant: "success",
           title: "Tickets updated",
-          description: result.message,
+          description: messages.join(" "),
         });
         setDisplayTickets((current) =>
           current.flatMap((ticket) => {
@@ -252,20 +351,37 @@ export function TicketBulkTable({
               return [ticket];
             }
 
-            if (!shouldKeepTicketAfterStatusChange(status)) {
+            if (bulkStatus && !shouldKeepTicketAfterStatusChange(bulkStatus)) {
               return [];
             }
 
-            return [
-              {
-                ...ticket,
-                status,
-                updatedAt: new Date(),
-              },
-            ];
+            const nextTicket = {
+              ...ticket,
+              assignedTo:
+                bulkAssignedToId === null
+                  ? ticket.assignedTo
+                  : bulkAssignedToId === unassignedAssigneeValue
+                    ? null
+                    : bulkAssignee,
+              priority: bulkPriority ?? ticket.priority,
+              status: bulkStatus ?? ticket.status,
+              tagLinks:
+                bulkTag && !ticket.tagLinks.some((link) => link.tagId === bulkTag.id)
+                  ? [
+                      ...ticket.tagLinks,
+                      {
+                        tag: bulkTag,
+                        tagId: bulkTag.id,
+                      },
+                    ].sort((a, b) => a.tag.name.localeCompare(b.tag.name))
+                  : ticket.tagLinks,
+              updatedAt: new Date(),
+            };
+
+            return [nextTicket];
           }),
         );
-        setSelectedIds([]);
+        clearSelection();
         router.refresh();
       } catch (error) {
         toast({
@@ -294,7 +410,7 @@ export function TicketBulkTable({
               !selectedSet.has(ticket.id) || ticket.status !== TicketStatus.CLOSED,
           ),
         );
-        setSelectedIds([]);
+        clearSelection();
         router.refresh();
       } catch (error) {
         toast({
@@ -302,6 +418,238 @@ export function TicketBulkTable({
           title: "Bulk delete failed",
           description:
             error instanceof Error ? error.message : "Tickets were not deleted.",
+        });
+      }
+    });
+  }
+
+  function runMarkUnread(ticketId: string) {
+    startTransition(async () => {
+      try {
+        const result = await markTicketUnread(ticketFormData(ticketId));
+
+        toast({
+          variant: "success",
+          title: "Ticket updated",
+          description: result.message,
+        });
+        setDisplayTickets((current) =>
+          current.map((ticket) =>
+            ticket.id === ticketId
+              ? {
+                  ...ticket,
+                  hasNewCustomerResponse: true,
+                }
+              : ticket,
+          ),
+        );
+        router.refresh();
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Update failed",
+          description:
+            error instanceof Error ? error.message : "Ticket was not updated.",
+        });
+      }
+    });
+  }
+
+  function runTicketStatusUpdate(
+    ticket: TicketBulkTableTicket,
+    nextStatus: TicketStatusValue,
+  ) {
+    if (ticket.status === nextStatus) {
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const formData = ticketFormData(ticket.id);
+        formData.set("status", nextStatus);
+        const result = await updateTicketStatus(formData);
+
+        toast({
+          variant: "success",
+          title: "Ticket updated",
+          description: result.message,
+        });
+        setDisplayTickets((current) =>
+          current.flatMap((currentTicket) => {
+            if (currentTicket.id !== ticket.id) {
+              return [currentTicket];
+            }
+
+            if (!shouldKeepTicketAfterStatusChange(nextStatus)) {
+              return [];
+            }
+
+            return [
+              {
+                ...currentTicket,
+                status: nextStatus,
+                updatedAt: new Date(),
+              },
+            ];
+          }),
+        );
+        setSelectedIds((current) =>
+          shouldKeepTicketAfterStatusChange(nextStatus)
+            ? current
+            : current.filter((ticketId) => ticketId !== ticket.id),
+        );
+        router.refresh();
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Status update failed",
+          description:
+            error instanceof Error
+              ? error.message
+              : "Ticket status was not updated.",
+        });
+      }
+    });
+  }
+
+  function runTicketPriorityUpdate(
+    ticket: TicketBulkTableTicket,
+    nextPriority: TicketPriorityValue,
+  ) {
+    if (ticket.priority === nextPriority) {
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const formData = ticketFormData(ticket.id);
+        formData.set("priority", nextPriority);
+        const result = await updateTicketPriority(formData);
+
+        toast({
+          variant: "success",
+          title: "Ticket updated",
+          description: result.message,
+        });
+        setDisplayTickets((current) =>
+          current.map((currentTicket) =>
+            currentTicket.id === ticket.id
+              ? {
+                  ...currentTicket,
+                  priority: nextPriority,
+                  updatedAt: new Date(),
+                }
+              : currentTicket,
+          ),
+        );
+        router.refresh();
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Priority update failed",
+          description:
+            error instanceof Error
+              ? error.message
+              : "Ticket priority was not updated.",
+        });
+      }
+    });
+  }
+
+  function runTicketAssignmentUpdate(
+    ticket: TicketBulkTableTicket,
+    nextAssignedToValue: string,
+  ) {
+    const currentAssignedToValue =
+      ticket.assignedTo?.id ?? unassignedAssigneeValue;
+
+    if (currentAssignedToValue === nextAssignedToValue) {
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const nextAssignedToId =
+          nextAssignedToValue === unassignedAssigneeValue
+            ? ""
+            : nextAssignedToValue;
+        const formData = ticketFormData(ticket.id);
+        formData.set("assignedToId", nextAssignedToId);
+        const result = await updateTicketAssignment(formData);
+        const nextAssignee =
+          nextAssignedToValue === unassignedAssigneeValue
+            ? null
+            : agents.find((agent) => agent.id === nextAssignedToValue) ?? null;
+
+        toast({
+          variant: "success",
+          title: "Ticket updated",
+          description: result.message,
+        });
+        setDisplayTickets((current) =>
+          current.map((currentTicket) =>
+            currentTicket.id === ticket.id
+              ? {
+                  ...currentTicket,
+                  assignedTo: nextAssignee,
+                  updatedAt: new Date(),
+                }
+              : currentTicket,
+          ),
+        );
+        router.refresh();
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Assignment update failed",
+          description:
+            error instanceof Error
+              ? error.message
+              : "Ticket assignment was not updated.",
+        });
+      }
+    });
+  }
+
+  function runTicketTagAdd(ticket: TicketBulkTableTicket, tag: TicketBulkTableTag) {
+    if (ticket.tagLinks.some((link) => link.tagId === tag.id)) {
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const formData = ticketFormData(ticket.id);
+        formData.set("tagName", tag.name);
+        const result = await addTicketTag(formData);
+
+        toast({
+          variant: "success",
+          title: "Ticket updated",
+          description: result.message,
+        });
+        setDisplayTickets((current) =>
+          current.map((currentTicket) =>
+            currentTicket.id === ticket.id
+              ? {
+                  ...currentTicket,
+                  tagLinks: [
+                    ...currentTicket.tagLinks,
+                    {
+                      tag,
+                      tagId: tag.id,
+                    },
+                  ].sort((a, b) => a.tag.name.localeCompare(b.tag.name)),
+                }
+              : currentTicket,
+          ),
+        );
+        router.refresh();
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Tag update failed",
+          description:
+            error instanceof Error ? error.message : "Ticket tag was not added.",
         });
       }
     });
@@ -336,65 +684,328 @@ export function TicketBulkTable({
     return `/tickets/${ticketId}?from=${encodeURIComponent(returnHref)}`;
   }
 
+  function renderTicketTags(ticket: TicketBulkTableTicket) {
+    if (ticket.tagLinks.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+        {ticket.tagLinks.map((link) => (
+          <Badge
+            key={link.tagId}
+            variant="outline"
+            className="max-w-[180px] shrink-0 truncate bg-background text-xs font-normal text-muted-foreground"
+          >
+            {link.tag.name}
+          </Badge>
+        ))}
+      </div>
+    );
+  }
+
+  function renderTicketActions(ticket: TicketBulkTableTicket) {
+    if (!canBulkUpdateStatus) {
+      return null;
+    }
+
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            disabled={isPending}
+            aria-label={`Actions for ticket #${ticket.number}`}
+          >
+            <MoreHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuGroup>
+            <DropdownMenuItem
+              disabled={isPending || ticket.hasNewCustomerResponse}
+              onSelect={() => runMarkUnread(ticket.id)}
+            >
+              Mark as unread
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger disabled={isPending}>
+              Change status
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-52">
+              <DropdownMenuRadioGroup
+                value={ticket.status}
+                onValueChange={(value) =>
+                  runTicketStatusUpdate(ticket, value as TicketStatusValue)
+                }
+              >
+                {Object.values(TicketStatus).map((option) => (
+                  <DropdownMenuRadioItem key={option} value={option}>
+                    {statusLabels[option]}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger disabled={isPending}>
+              Change priority
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-44">
+              <DropdownMenuRadioGroup
+                value={ticket.priority}
+                onValueChange={(value) =>
+                  runTicketPriorityUpdate(ticket, value as TicketPriorityValue)
+                }
+              >
+                {Object.values(TicketPriority).map((option) => (
+                  <DropdownMenuRadioItem key={option} value={option}>
+                    {priorityLabels[option]}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger disabled={isPending}>
+              Assign to
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-56">
+              <DropdownMenuRadioGroup
+                value={ticket.assignedTo?.id ?? unassignedAssigneeValue}
+                onValueChange={(value) =>
+                  runTicketAssignmentUpdate(ticket, value)
+                }
+              >
+                <DropdownMenuRadioItem value={unassignedAssigneeValue}>
+                  Unassigned
+                </DropdownMenuRadioItem>
+                {agents.map((agent) => (
+                  <DropdownMenuRadioItem key={agent.id} value={agent.id}>
+                    {agent.name ?? agent.email}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger disabled={isPending || tags.length === 0}>
+              Add tag
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-56">
+              <DropdownMenuGroup>
+                {tags.length === 0 ? (
+                  <DropdownMenuItem disabled>No tags available</DropdownMenuItem>
+                ) : (
+                  tags.map((tag) => {
+                    const hasTag = ticket.tagLinks.some(
+                      (link) => link.tagId === tag.id,
+                    );
+
+                    return (
+                      <DropdownMenuItem
+                        key={tag.id}
+                        disabled={isPending || hasTag}
+                        onSelect={() => runTicketTagAdd(ticket, tag)}
+                      >
+                        {tag.name}
+                      </DropdownMenuItem>
+                    );
+                  })
+                )}
+              </DropdownMenuGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
   return (
     <>
       {canSelectTickets && selectedCount > 0 ? (
-        <div className="flex min-w-0 flex-col gap-3 border-b border-zinc-200 bg-cyan-50/70 px-3 py-3 text-sm md:flex-row md:items-center md:justify-between">
-          <div className="flex min-w-0 items-center gap-2">
-            <Badge variant="secondary" className="shrink-0">
-              {selectedCount} selected
-            </Badge>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={isPending}
-              onClick={clearSelection}
-            >
-              <X data-icon="inline-start" />
-              Clear
-            </Button>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="border-b border-zinc-200 bg-cyan-50/70 px-4 py-3 text-sm">
+          <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center">
+            <div className="flex min-w-0 shrink-0 items-center gap-2">
+              <Badge variant="secondary" className="shrink-0 bg-white">
+                {selectedCount} selected
+              </Badge>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={isPending}
+                onClick={clearSelection}
+              >
+                <X data-icon="inline-start" />
+                Clear
+              </Button>
+            </div>
             {canBulkUpdateStatus ? (
-              <>
-                <span className="text-xs font-medium text-muted-foreground">
-                  Set status
+              <Separator
+                orientation="vertical"
+                className="hidden h-7 bg-zinc-300 xl:block"
+              />
+            ) : null}
+            {canBulkUpdateStatus ? (
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                  Bulk update
                 </span>
-                <Select
-                  value={status ?? undefined}
-                  onValueChange={(value) =>
-                    setStatus(value as TicketStatusValue)
-                  }
-                >
-                  <SelectTrigger size="sm" className="w-[190px] bg-white">
-                    <SelectValue placeholder="Choose status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isPending}
+                      className="max-w-[210px] justify-start bg-white"
+                    >
+                      <span className="truncate">
+                        {bulkStatus
+                          ? `Status: ${statusLabels[bulkStatus]}`
+                          : "Status"}
+                      </span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-56">
+                    <DropdownMenuGroup>
                       {Object.values(TicketStatus).map((option) => (
-                        <SelectItem key={option} value={option}>
+                        <DropdownMenuItem
+                          key={option}
+                          onSelect={() => setBulkStatus(option)}
+                        >
                           {statusLabels[option]}
-                        </SelectItem>
+                        </DropdownMenuItem>
                       ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isPending}
+                      className="max-w-[190px] justify-start bg-white"
+                    >
+                      <span className="truncate">
+                        {bulkPriority
+                          ? `Priority: ${priorityLabels[bulkPriority]}`
+                          : "Priority"}
+                      </span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-44">
+                    <DropdownMenuGroup>
+                      {Object.values(TicketPriority).map((option) => (
+                        <DropdownMenuItem
+                          key={option}
+                          onSelect={() => setBulkPriority(option)}
+                        >
+                          {priorityLabels[option]}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isPending}
+                      className="max-w-[240px] justify-start bg-white"
+                    >
+                      <span className="truncate">
+                        {bulkAssignedToId === null
+                          ? "Assignee"
+                          : bulkAssignedToId === unassignedAssigneeValue
+                            ? "Assignee: Unassigned"
+                            : `Assignee: ${bulkAssignee?.name ?? bulkAssignee?.email ?? "Selected"}`}
+                      </span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-56">
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          setBulkAssignedToId(unassignedAssigneeValue)
+                        }
+                      >
+                        Unassigned
+                      </DropdownMenuItem>
+                      {agents.map((agent) => (
+                        <DropdownMenuItem
+                          key={agent.id}
+                          onSelect={() => setBulkAssignedToId(agent.id)}
+                        >
+                          {agent.name ?? agent.email}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isPending || tags.length === 0}
+                      className="max-w-[220px] justify-start bg-white"
+                    >
+                      <span className="truncate">
+                        {bulkTag ? `Tag: ${bulkTag.name}` : "Tag"}
+                      </span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-56">
+                    <DropdownMenuGroup>
+                      {tags.length === 0 ? (
+                        <DropdownMenuItem disabled>
+                          No tags available
+                        </DropdownMenuItem>
+                      ) : (
+                        tags.map((tag) => (
+                          <DropdownMenuItem
+                            key={tag.id}
+                            onSelect={() => setBulkTagId(tag.id)}
+                          >
+                            {tag.name}
+                          </DropdownMenuItem>
+                        ))
+                      )}
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <Button
                   type="button"
                   size="sm"
-                  disabled={isPending || !status}
-                  onClick={runBulkStatusUpdate}
+                  disabled={isPending || !hasBulkUpdates}
+                  onClick={runBulkUpdateApply}
                 >
                   Apply
                 </Button>
-              </>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={isPending || !hasBulkUpdates}
+                  onClick={clearBulkUpdates}
+                >
+                  Reset
+                </Button>
+              </div>
             ) : null}
             {canBulkDelete ? (
-              <>
-                {canBulkUpdateStatus ? (
-                  <div className="mx-1 hidden h-5 w-px bg-zinc-300 sm:block" />
-                ) : null}
+              <div className="flex shrink-0 items-center">
                 <Button
                   type="button"
                   size="sm"
@@ -405,7 +1016,7 @@ export function TicketBulkTable({
                   <Trash2 data-icon="inline-start" />
                   Delete closed
                 </Button>
-              </>
+              </div>
             ) : null}
           </div>
         </div>
@@ -435,27 +1046,30 @@ export function TicketBulkTable({
                 </div>
               ) : null}
               <div className="min-w-0 flex-1">
-                <div className="mb-1 flex min-w-0 items-center gap-2">
-                  <Link
-                    href={getTicketHref(ticket.id)}
-                    className="shrink-0 text-xs font-medium text-muted-foreground hover:text-zinc-950 hover:underline"
-                  >
-                    #{ticket.number}
-                  </Link>
-                  {ticket._count.attachments > 0 ? (
-                    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                      <Paperclip className="size-3" />
-                      {ticket._count.attachments}
-                    </span>
-                  ) : null}
-                  {ticket.hasNewCustomerResponse ? (
-                    <Badge
-                      variant="outline"
-                      className="border-cyan-200 bg-cyan-100 text-cyan-800"
+                <div className="mb-1 flex min-w-0 items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Link
+                      href={getTicketHref(ticket.id)}
+                      className="shrink-0 text-xs font-medium text-muted-foreground hover:text-zinc-950 hover:underline"
                     >
-                      New
-                    </Badge>
-                  ) : null}
+                      #{ticket.number}
+                    </Link>
+                    {ticket._count.attachments > 0 ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                        <Paperclip className="size-3" />
+                        {ticket._count.attachments}
+                      </span>
+                    ) : null}
+                    {ticket.hasNewCustomerResponse ? (
+                      <Badge
+                        variant="outline"
+                        className="border-cyan-200 bg-cyan-100 text-cyan-800"
+                      >
+                        New
+                      </Badge>
+                    ) : null}
+                  </div>
+                  {renderTicketActions(ticket)}
                 </div>
                 <Link
                   href={getTicketHref(ticket.id)}
@@ -468,6 +1082,7 @@ export function TicketBulkTable({
                 >
                   {ticket.subject}
                 </Link>
+                {renderTicketTags(ticket)}
                 <div className="mt-1 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
                   {customerName}
                 </div>
@@ -549,6 +1164,9 @@ export function TicketBulkTable({
                 Assignee
               </TableHead>
               <TableHead className="w-[170px] text-right">Activity</TableHead>
+              {canBulkUpdateStatus ? (
+                <TableHead className="w-[52px] text-right">Actions</TableHead>
+              ) : null}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -606,6 +1224,7 @@ export function TicketBulkTable({
                         >
                           {ticket.subject}
                         </Link>
+                        {renderTicketTags(ticket)}
                         <div className="mt-1 break-words text-xs text-muted-foreground [overflow-wrap:anywhere] lg:hidden">
                           {customerName}
                         </div>
@@ -674,13 +1293,18 @@ export function TicketBulkTable({
                       </div>
                     ) : null}
                   </TableCell>
+                  {canBulkUpdateStatus ? (
+                    <TableCell className="text-right">
+                      {renderTicketActions(ticket)}
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               );
             })}
             {displayTickets.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={canSelectTickets ? 8 : 7}
+                  colSpan={emptyStateColumnCount}
                   className="h-28 text-center text-muted-foreground"
                 >
                   {hasFilters

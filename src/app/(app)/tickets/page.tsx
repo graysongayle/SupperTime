@@ -539,6 +539,7 @@ async function getDashboardData(
     tickets,
     totalTickets,
     agents,
+    tags,
     summaryTickets,
   ] = await Promise.all([
     prisma.ticket.findMany({
@@ -555,8 +556,19 @@ async function getDashboardData(
         },
         assignedTo: {
           select: {
+            id: true,
             name: true,
             email: true,
+          },
+        },
+        tagLinks: {
+          include: {
+            tag: true,
+          },
+          orderBy: {
+            tag: {
+              name: "asc",
+            },
           },
         },
         _count: {
@@ -605,6 +617,11 @@ async function getDashboardData(
         id: true,
         name: true,
         email: true,
+      },
+    }),
+    prisma.tag.findMany({
+      orderBy: {
+        name: "asc",
       },
     }),
     prisma.ticket.findMany({
@@ -701,6 +718,7 @@ async function getDashboardData(
       view,
     },
     agents,
+    tags,
     canBulkDelete:
       currentUser?.role === UserRole.SUPER_ADMIN ||
       currentUser?.role === UserRole.MANAGER ||
@@ -1027,6 +1045,8 @@ export default async function TicketsPage({
         </div>
         <Separator />
         <TicketBulkTable
+          agents={dashboard.agents}
+          tags={dashboard.tags}
           activeStatus={
             dashboard.active.statuses.length === 1
               ? dashboard.active.statuses[0]
