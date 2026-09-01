@@ -25,12 +25,10 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
@@ -722,7 +720,10 @@ export function TicketBulkTable({
             <MoreHorizontal />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuContent
+          align="end"
+          className="w-72 max-w-[calc(100vw-2rem)]"
+        >
           <DropdownMenuGroup>
             <DropdownMenuItem
               disabled={isPending || ticket.hasNewCustomerResponse}
@@ -732,94 +733,71 @@ export function TicketBulkTable({
             </DropdownMenuItem>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger disabled={isPending}>
-              Change status
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-52">
-              <DropdownMenuRadioGroup
-                value={ticket.status}
-                onValueChange={(value) =>
-                  runTicketStatusUpdate(ticket, value as TicketStatusValue)
-                }
-              >
-                {Object.values(TicketStatus).map((option) => (
-                  <DropdownMenuRadioItem key={option} value={option}>
-                    {statusLabels[option]}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger disabled={isPending}>
-              Change priority
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-44">
-              <DropdownMenuRadioGroup
-                value={ticket.priority}
-                onValueChange={(value) =>
-                  runTicketPriorityUpdate(ticket, value as TicketPriorityValue)
-                }
-              >
-                {Object.values(TicketPriority).map((option) => (
-                  <DropdownMenuRadioItem key={option} value={option}>
-                    {priorityLabels[option]}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger disabled={isPending}>
-              Assign to
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-56">
-              <DropdownMenuRadioGroup
-                value={ticket.assignedTo?.id ?? unassignedAssigneeValue}
-                onValueChange={(value) =>
-                  runTicketAssignmentUpdate(ticket, value)
-                }
-              >
-                <DropdownMenuRadioItem value={unassignedAssigneeValue}>
-                  Unassigned
-                </DropdownMenuRadioItem>
-                {agents.map((agent) => (
-                  <DropdownMenuRadioItem key={agent.id} value={agent.id}>
-                    {agent.name ?? agent.email}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger disabled={isPending || tags.length === 0}>
-              Add tag
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-56">
-              <DropdownMenuGroup>
-                {tags.length === 0 ? (
-                  <DropdownMenuItem disabled>No tags available</DropdownMenuItem>
-                ) : (
-                  tags.map((tag) => {
-                    const hasTag = ticket.tagLinks.some(
-                      (link) => link.tagId === tag.id,
-                    );
+          <DropdownMenuLabel>Change status</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={ticket.status}
+            onValueChange={(value) =>
+              runTicketStatusUpdate(ticket, value as TicketStatusValue)
+            }
+          >
+            {Object.values(TicketStatus).map((option) => (
+              <DropdownMenuRadioItem key={option} value={option}>
+                {statusLabels[option]}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Change priority</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={ticket.priority}
+            onValueChange={(value) =>
+              runTicketPriorityUpdate(ticket, value as TicketPriorityValue)
+            }
+          >
+            {Object.values(TicketPriority).map((option) => (
+              <DropdownMenuRadioItem key={option} value={option}>
+                {priorityLabels[option]}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Assign to</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={ticket.assignedTo?.id ?? unassignedAssigneeValue}
+            onValueChange={(value) => runTicketAssignmentUpdate(ticket, value)}
+          >
+            <DropdownMenuRadioItem value={unassignedAssigneeValue}>
+              Unassigned
+            </DropdownMenuRadioItem>
+            {agents.map((agent) => (
+              <DropdownMenuRadioItem key={agent.id} value={agent.id}>
+                {agent.name ?? agent.email}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Add tag</DropdownMenuLabel>
+          <DropdownMenuGroup>
+            {tags.length === 0 ? (
+              <DropdownMenuItem disabled>No tags available</DropdownMenuItem>
+            ) : (
+              tags.map((tag) => {
+                const hasTag = ticket.tagLinks.some(
+                  (link) => link.tagId === tag.id,
+                );
 
-                    return (
-                      <DropdownMenuItem
-                        key={tag.id}
-                        disabled={isPending || hasTag}
-                        onSelect={() => runTicketTagAdd(ticket, tag)}
-                      >
-                        {tag.name}
-                      </DropdownMenuItem>
-                    );
-                  })
-                )}
-              </DropdownMenuGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+                return (
+                  <DropdownMenuItem
+                    key={tag.id}
+                    disabled={isPending || hasTag}
+                    onSelect={() => runTicketTagAdd(ticket, tag)}
+                  >
+                    {tag.name}
+                  </DropdownMenuItem>
+                );
+              })
+            )}
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
     );

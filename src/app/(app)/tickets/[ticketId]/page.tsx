@@ -5,10 +5,8 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDot,
-  Mail,
   Plus,
   Tag,
-  UserRound,
   X,
 } from "lucide-react";
 
@@ -18,6 +16,7 @@ import {
 } from "@/app/(app)/tickets/actions";
 import { DeleteTicketForm } from "@/components/app/delete-ticket-form";
 import { TicketPropertiesForm } from "@/components/app/ticket-properties-form";
+import { TicketPropertiesMenu } from "@/components/app/ticket-properties-menu";
 import { TicketSubjectForm } from "@/components/app/ticket-subject-form";
 import { TicketTimeline } from "@/components/app/ticket-timeline";
 import { Badge } from "@/components/ui/badge";
@@ -361,19 +360,6 @@ export default async function TicketDetailPage({
             },
           },
         },
-        statusHistory: {
-          orderBy: {
-            createdAt: "desc",
-          },
-          include: {
-            changedBy: {
-              select: {
-                name: true,
-                email: true,
-              },
-            },
-          },
-        },
       },
     }),
     prisma.user.findMany({
@@ -539,12 +525,26 @@ export default async function TicketDetailPage({
             </span>
           </div>
           <TicketSubjectForm subject={ticket.subject} ticketId={ticket.id} />
-          <p className="mt-1 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
-            {ticket.customer.name ?? ticket.customer.email} · created{" "}
-            {formatDate(ticket.createdAt)}
-          </p>
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+            <span className="font-medium">Customer</span>
+            <Link
+              href={`/customers/${ticket.customer.id}`}
+              className="min-w-0 break-words font-medium text-zinc-950 hover:text-cyan-700 hover:underline [overflow-wrap:anywhere]"
+            >
+              {ticket.customer.name ?? "Unnamed customer"}
+            </Link>
+            <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+              ({ticket.customer.email})
+            </span>
+            {ticket.customer.phone ? (
+              <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                {ticket.customer.phone}
+              </span>
+            ) : null}
+            <span className="shrink-0">created {formatDate(ticket.createdAt)}</span>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {previousTicket ? (
             <Button variant="outline" size="sm" asChild className="bg-white">
               <Link
@@ -577,6 +577,16 @@ export default async function TicketDetailPage({
               <ChevronRight className="size-4" />
             </Button>
           )}
+          <TicketPropertiesMenu
+            agents={agents}
+            assignedToId={ticket.assignedToId}
+            priority={ticket.priority}
+            status={ticket.status}
+            tagLinks={ticket.tagLinks}
+            tags={tags}
+            ticketId={ticket.id}
+            ticketNumber={ticket.number}
+          />
         </div>
       </div>
 
@@ -623,7 +633,7 @@ export default async function TicketDetailPage({
         </div>
 
         <aside className="min-w-0 space-y-5">
-          <Card className="rounded-lg border-zinc-200 bg-white shadow-sm">
+          <Card className="hidden rounded-lg border-zinc-200 bg-white shadow-sm xl:block">
             <CardHeader>
               <CardTitle className="text-base">Properties</CardTitle>
             </CardHeader>
@@ -635,32 +645,6 @@ export default async function TicketDetailPage({
                 status={ticket.status}
                 ticketId={ticket.id}
               />
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-lg border-zinc-200 bg-white shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <UserRound className="size-4 text-cyan-700" />
-                Customer
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <Link
-                href={`/customers/${ticket.customer.id}`}
-                className="font-medium text-zinc-950 hover:text-cyan-700 hover:underline"
-              >
-                {ticket.customer.name ?? "Unnamed customer"}
-              </Link>
-              <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
-                <Mail className="size-4" />
-                <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-                  {ticket.customer.email}
-                </span>
-              </div>
-              {ticket.customer.phone ? (
-                <div className="text-muted-foreground">{ticket.customer.phone}</div>
-              ) : null}
             </CardContent>
           </Card>
 
@@ -797,38 +781,6 @@ export default async function TicketDetailPage({
             </CardContent>
           </Card>
 
-          <Card className="rounded-lg border-zinc-200 bg-white shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base">Status history</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {ticket.statusHistory.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm"
-                >
-                  <div className="font-medium text-zinc-950">
-                    {entry.from ? `${statusLabels[entry.from]} -> ` : ""}
-                    {statusLabels[entry.to]}
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {entry.changedBy?.name ?? entry.changedBy?.email ?? "System"} ·{" "}
-                    {formatDate(entry.createdAt)}
-                  </div>
-                  {entry.note ? (
-                    <p className="mt-2 break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">
-                      {entry.note}
-                    </p>
-                  ) : null}
-                </div>
-              ))}
-              {ticket.statusHistory.length === 0 ? (
-                <div className="text-sm text-muted-foreground">
-                  No status changes yet.
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
         </aside>
       </div>
     </>

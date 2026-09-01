@@ -232,7 +232,7 @@ Major architectural and product decisions should be documented.
 
 The repository should contain:
 
-- AGENT.md
+- AGENTS.md
 - PRODUCT.md
 - ARCHITECTURE.md
 - NFR.md

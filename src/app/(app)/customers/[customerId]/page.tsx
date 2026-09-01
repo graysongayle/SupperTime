@@ -207,7 +207,70 @@ export default async function CustomerDetailPage({
               Related tickets
             </h2>
           </div>
-          <div className="overflow-x-auto">
+          <div className="divide-y divide-zinc-200 md:hidden">
+            {customer.tickets.map((ticket) => (
+              <Link
+                key={ticket.id}
+                href={`/tickets/${ticket.id}`}
+                className="block p-4 hover:bg-zinc-50/80"
+              >
+                <div className="flex min-w-0 flex-col gap-3">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-muted-foreground">
+                        #{ticket.number}
+                      </div>
+                      <div className="break-words font-medium text-zinc-950 [overflow-wrap:anywhere]">
+                        {ticket.subject}
+                      </div>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={cn("shrink-0", statusStyles[ticket.status])}
+                    >
+                      {statusLabels[ticket.status]}
+                    </Badge>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <Badge variant="secondary">
+                      {priorityLabels[ticket.priority]}
+                    </Badge>
+                    <span className="text-muted-foreground">
+                      {ticket._count.messages} messages
+                    </span>
+                    <span className="text-muted-foreground">
+                      {ticket._count.attachments} attachments
+                    </span>
+                  </div>
+
+                  <div className="grid gap-1 text-xs text-muted-foreground">
+                    <div className="flex min-w-0 justify-between gap-3">
+                      <span>Assigned</span>
+                      <span className="min-w-0 break-words text-right [overflow-wrap:anywhere]">
+                        {ticket.assignedTo?.name ??
+                          ticket.assignedTo?.email ??
+                          "Unassigned"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span>Updated</span>
+                      <span className="text-right">
+                        {formatDate(ticket.updatedAt)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+            {customer.tickets.length === 0 ? (
+              <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+                This customer does not have any tickets yet.
+              </div>
+            ) : null}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
             <Table className="min-w-full table-fixed">
               <TableHeader className="bg-zinc-50">
                 <TableRow>

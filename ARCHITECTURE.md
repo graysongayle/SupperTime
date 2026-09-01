@@ -25,8 +25,8 @@ Prisma 7 generates the client into `src/generated/prisma`. Runtime access should
 
 - Clerk provides internal authentication.
 - PostgreSQL is the source of truth for support data.
-- Email ingestion and outbound delivery are not implemented yet; webhook route names are reserved.
-- Attachment storage is not implemented yet; storage metadata is represented in the schema.
+- Postmark handles inbound support email through `src/app/api/email/inbound/postmark/route.ts` and outbound support email through `src/lib/support-email.ts`.
+- Attachments are validated through shared attachment limits, stored through the S3-compatible helpers in `src/lib/attachments.ts`, and served through signed download/view routes.
 
 ## UI Conventions
 
