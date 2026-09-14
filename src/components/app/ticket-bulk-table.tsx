@@ -999,7 +999,7 @@ export function TicketBulkTable({
           </div>
         </div>
       ) : null}
-      <div className="divide-y divide-zinc-200 md:hidden">
+      <div className="divide-y divide-zinc-200 lg:hidden">
         {displayTickets.map((ticket) => {
           const { agingState, customerName } = getTicketDisplayData(ticket);
 
@@ -1107,7 +1107,7 @@ export function TicketBulkTable({
           </div>
         ) : null}
       </div>
-      <div className="hidden min-w-0 overflow-x-auto md:block">
+      <div className="hidden min-w-0 overflow-x-auto lg:block">
         <Table className="min-w-full table-fixed">
           <TableHeader className="bg-zinc-50">
             <TableRow>
@@ -1126,19 +1126,19 @@ export function TicketBulkTable({
               ) : null}
               <TableHead className="w-[82px]">Ticket</TableHead>
               <TableHead>Subject</TableHead>
-              <TableHead className="hidden w-[220px] lg:table-cell">
+              <TableHead className="hidden w-[220px] 2xl:table-cell">
                 Customer
               </TableHead>
-              <TableHead className="hidden w-[150px] md:table-cell">
+              <TableHead className="hidden w-[150px] lg:table-cell">
                 <div className="flex items-center gap-1">
                   Status
                   <StatusDefinitionsMenu />
                 </div>
               </TableHead>
-              <TableHead className="hidden w-[90px] xl:table-cell">
+              <TableHead className="hidden w-[90px] 2xl:table-cell">
                 Priority
               </TableHead>
-              <TableHead className="hidden w-[150px] xl:table-cell">
+              <TableHead className="hidden w-[150px] 2xl:table-cell">
                 Assignee
               </TableHead>
               <TableHead className="w-[170px] text-right">Activity</TableHead>
@@ -1203,7 +1203,7 @@ export function TicketBulkTable({
                           {ticket.subject}
                         </Link>
                         {renderTicketTags(ticket)}
-                        <div className="mt-1 break-words text-xs text-muted-foreground [overflow-wrap:anywhere] lg:hidden">
+                        <div className="mt-1 break-words text-xs text-muted-foreground [overflow-wrap:anywhere] 2xl:hidden">
                           {customerName}
                         </div>
                       </div>
@@ -1223,10 +1223,10 @@ export function TicketBulkTable({
                       ) : null}
                     </div>
                   </TableCell>
-                  <TableCell className="hidden whitespace-normal break-words [overflow-wrap:anywhere] lg:table-cell">
+                  <TableCell className="hidden whitespace-normal break-words [overflow-wrap:anywhere] 2xl:table-cell">
                     {customerName}
                   </TableCell>
-                  <TableCell className="hidden md:table-cell">
+                  <TableCell className="hidden lg:table-cell">
                     <Badge
                       variant="outline"
                       className={statusStyles[ticket.status]}
@@ -1235,11 +1235,11 @@ export function TicketBulkTable({
                     </Badge>
                   </TableCell>
                   <TableCell
-                    className={`hidden xl:table-cell ${priorityStyles[ticket.priority]}`}
+                    className={`hidden 2xl:table-cell ${priorityStyles[ticket.priority]}`}
                   >
                     {priorityLabels[ticket.priority]}
                   </TableCell>
-                  <TableCell className="hidden whitespace-normal break-words [overflow-wrap:anywhere] xl:table-cell">
+                  <TableCell className="hidden whitespace-normal break-words [overflow-wrap:anywhere] 2xl:table-cell">
                     {assigneeName}
                   </TableCell>
                   <TableCell className="w-[170px] whitespace-nowrap text-right text-muted-foreground">
