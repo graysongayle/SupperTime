@@ -1203,8 +1203,16 @@ export function TicketBulkTable({
                           {ticket.subject}
                         </Link>
                         {renderTicketTags(ticket)}
-                        <div className="mt-1 break-words text-xs text-muted-foreground [overflow-wrap:anywhere] 2xl:hidden">
-                          {customerName}
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground 2xl:hidden">
+                          <span className="break-words [overflow-wrap:anywhere]">
+                            {customerName}
+                          </span>
+                          <span className={priorityStyles[ticket.priority]}>
+                            {priorityLabels[ticket.priority]}
+                          </span>
+                          <span className="break-words [overflow-wrap:anywhere]">
+                            {assigneeName}
+                          </span>
                         </div>
                       </div>
                       {ticket._count.attachments > 0 ? (
