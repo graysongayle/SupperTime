@@ -1820,7 +1820,6 @@ export async function markTicketUnread(formData: FormData) {
     throw new Error("Ticket not found.");
   }
 
-  revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/tickets");
 
   return {

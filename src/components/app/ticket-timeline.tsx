@@ -503,22 +503,64 @@ function ReplyDialog({
           Reply
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[calc(100vh-2rem)] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[calc(100vh-2rem)] max-w-5xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Reply to this response</DialogTitle>
         </DialogHeader>
-        <TicketReplyForm
-          cannedResponses={cannedResponses}
-          ccParticipants={[]}
-          defaultCcEmails={recipients.ccEmails}
-          defaultToEmails={recipients.toEmails}
-          onSent={() => setOpen(false)}
-          replyRecipientLabel={recipients.label}
-          ticketId={ticketId}
-          toParticipants={[]}
-        />
+        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <ReplyContextPanel message={message} />
+          <div className="min-w-0">
+            <TicketReplyForm
+              cannedResponses={cannedResponses}
+              ccParticipants={[]}
+              defaultCcEmails={recipients.ccEmails}
+              defaultToEmails={recipients.toEmails}
+              onSent={() => setOpen(false)}
+              replyRecipientLabel={recipients.label}
+              ticketId={ticketId}
+              toParticipants={[]}
+            />
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ReplyContextPanel({ message }: { message: TimelineMessage }) {
+  const body = normalizeMessageBody(message.body);
+
+  return (
+    <section
+      aria-label="Message being replied to"
+      className="min-w-0 self-start rounded-lg border border-zinc-200 bg-zinc-50 shadow-sm lg:sticky lg:top-0"
+    >
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2 border-b border-zinc-200 px-3 py-2">
+        <div className="min-w-0">
+          <div className="text-xs font-medium uppercase tracking-normal text-muted-foreground">
+            Replying to
+          </div>
+          <div className="truncate text-sm font-medium text-zinc-950">
+            {getMessageAuthor(message)}
+          </div>
+        </div>
+        <div className="shrink-0 text-xs text-muted-foreground">
+          {formatDate(message.createdAt)}
+        </div>
+      </div>
+      <div className="max-h-56 overflow-y-auto bg-white px-3 py-3 text-sm text-zinc-700 lg:max-h-[calc(100vh-14rem)]">
+        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+          {body || "No message body."}
+        </p>
+      </div>
+      {message.attachments.length > 0 ? (
+        <div className="border-t border-zinc-200 px-3 py-2 text-xs text-muted-foreground">
+          {message.attachments.length === 1
+            ? "1 attachment"
+            : `${message.attachments.length} attachments`}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
