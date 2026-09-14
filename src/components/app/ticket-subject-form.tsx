@@ -96,14 +96,15 @@ export function TicketSubjectForm({
   }
 
   return (
-    <div className="flex max-w-4xl items-start gap-2">
-      <h1 className="min-w-0 flex-1 break-words text-2xl font-semibold tracking-normal text-zinc-950 [overflow-wrap:anywhere]">
+    <div className="inline-flex max-w-full items-start gap-1.5">
+      <h1 className="min-w-0 break-words text-2xl font-semibold tracking-normal text-zinc-950 [overflow-wrap:anywhere]">
         {currentSubject}
       </h1>
       <Button
         type="button"
         variant="ghost"
         size="icon-sm"
+        className="mt-0.5 shrink-0"
         onClick={() => setIsEditing(true)}
         aria-label="Edit ticket title"
       >
