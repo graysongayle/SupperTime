@@ -98,6 +98,18 @@ function optionalString(formData: FormData, key: string) {
   return value || null;
 }
 
+function getSafeTicketsReturnHref(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  if (value === "/tickets" || value.startsWith("/tickets?")) {
+    return value;
+  }
+
+  return null;
+}
+
 function parseCommaSeparated(value: string | null) {
   if (!value) {
     return [];
@@ -1808,6 +1820,9 @@ export async function updateTicketProperties(formData: FormData) {
 export async function markTicketUnread(formData: FormData) {
   await requireTicketUser();
   const ticketId = requiredString(formData, "ticketId");
+  const returnHref = getSafeTicketsReturnHref(
+    optionalString(formData, "returnTo"),
+  );
   const markedUnreadAt = new Date();
 
   const updatedCount = await prisma.$executeRaw`
@@ -1821,6 +1836,10 @@ export async function markTicketUnread(formData: FormData) {
   }
 
   revalidatePath("/tickets");
+
+  if (returnHref) {
+    redirect(returnHref);
+  }
 
   return {
     ok: true,

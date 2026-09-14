@@ -123,6 +123,11 @@ export function TicketPropertiesMenu({
   function ticketFormData() {
     const formData = new FormData();
     formData.set("ticketId", ticketId);
+
+    if (markUnreadReturnHref) {
+      formData.set("returnTo", markUnreadReturnHref);
+    }
+
     return formData;
   }
 
