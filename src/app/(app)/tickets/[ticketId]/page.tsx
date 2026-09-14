@@ -499,100 +499,98 @@ export default async function TicketDetailPage({
 
   return (
     <>
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="min-w-0">
-          <Button variant="ghost" size="sm" asChild className="mb-2 -ml-2">
-            <Link href={returnHref}>
-              <ArrowLeft className="size-4" />
-              Back to tickets
-            </Link>
-          </Button>
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className={statusStyles[ticket.status]}>
-              {statusLabels[ticket.status]}
-            </Badge>
-            <Badge variant="outline">#{ticket.number}</Badge>
-            {agingState ? (
-              <Badge
-                variant="outline"
-                className={getTicketAgingClass(agingState.severity)}
-              >
-                {agingState.label} · {agingState.ageLabel}
-              </Badge>
-            ) : null}
-            <span className="text-xs text-muted-foreground">
-              {sourceLabels[ticket.source]}
-            </span>
-          </div>
-          <TicketSubjectForm subject={ticket.subject} ticketId={ticket.id} />
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-            <span className="font-medium">Customer</span>
-            <Link
-              href={`/customers/${ticket.customer.id}`}
-              className="min-w-0 break-words font-medium text-zinc-950 hover:text-cyan-700 hover:underline [overflow-wrap:anywhere]"
+      <div className="min-w-0">
+        <Button variant="ghost" size="sm" asChild className="mb-2 -ml-2">
+          <Link href={returnHref}>
+            <ArrowLeft className="size-4" />
+            Back to tickets
+          </Link>
+        </Button>
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className={statusStyles[ticket.status]}>
+            {statusLabels[ticket.status]}
+          </Badge>
+          <Badge variant="outline">#{ticket.number}</Badge>
+          {agingState ? (
+            <Badge
+              variant="outline"
+              className={getTicketAgingClass(agingState.severity)}
             >
-              {ticket.customer.name ?? "Unnamed customer"}
-            </Link>
-            <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-              ({ticket.customer.email})
-            </span>
-            {ticket.customer.phone ? (
-              <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-                {ticket.customer.phone}
-              </span>
-            ) : null}
-            <span className="shrink-0">created {formatDate(ticket.createdAt)}</span>
-          </div>
+              {agingState.label} · {agingState.ageLabel}
+            </Badge>
+          ) : null}
+          <span className="text-xs text-muted-foreground">
+            {sourceLabels[ticket.source]}
+          </span>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {previousTicket ? (
-            <Button variant="outline" size="sm" asChild className="bg-white">
-              <Link
-                href={getTicketDetailHref(previousTicket.id, returnHref)}
-                title={`Previous ticket: #${previousTicket.number} ${previousTicket.subject}`}
-              >
-                <ChevronLeft className="size-4" />
-                Previous
-              </Link>
-            </Button>
-          ) : (
-            <Button variant="outline" size="sm" disabled className="bg-white">
-              <ChevronLeft className="size-4" />
-              Previous
-            </Button>
-          )}
-          {nextTicket ? (
-            <Button variant="outline" size="sm" asChild className="bg-white">
-              <Link
-                href={getTicketDetailHref(nextTicket.id, returnHref)}
-                title={`Next ticket: #${nextTicket.number} ${nextTicket.subject}`}
-              >
-                Next
-                <ChevronRight className="size-4" />
-              </Link>
-            </Button>
-          ) : (
-            <Button variant="outline" size="sm" disabled className="bg-white">
-              Next
-              <ChevronRight className="size-4" />
-            </Button>
-          )}
-          <TicketPropertiesMenu
-            agents={agents}
-            assignedToId={ticket.assignedToId}
-            markUnreadReturnHref={returnHref}
-            priority={ticket.priority}
-            status={ticket.status}
-            tagLinks={ticket.tagLinks}
-            tags={tags}
-            ticketId={ticket.id}
-            ticketNumber={ticket.number}
-          />
+        <TicketSubjectForm subject={ticket.subject} ticketId={ticket.id} />
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+          <span className="font-medium">Customer</span>
+          <Link
+            href={`/customers/${ticket.customer.id}`}
+            className="min-w-0 break-words font-medium text-zinc-950 hover:text-cyan-700 hover:underline [overflow-wrap:anywhere]"
+          >
+            {ticket.customer.name ?? "Unnamed customer"}
+          </Link>
+          <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+            ({ticket.customer.email})
+          </span>
+          {ticket.customer.phone ? (
+            <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+              {ticket.customer.phone}
+            </span>
+          ) : null}
+          <span className="shrink-0">created {formatDate(ticket.createdAt)}</span>
         </div>
       </div>
 
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0 space-y-5">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {previousTicket ? (
+              <Button variant="outline" size="sm" asChild className="bg-white">
+                <Link
+                  href={getTicketDetailHref(previousTicket.id, returnHref)}
+                  title={`Previous ticket: #${previousTicket.number} ${previousTicket.subject}`}
+                >
+                  <ChevronLeft className="size-4" />
+                  Previous
+                </Link>
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" disabled className="bg-white">
+                <ChevronLeft className="size-4" />
+                Previous
+              </Button>
+            )}
+            {nextTicket ? (
+              <Button variant="outline" size="sm" asChild className="bg-white">
+                <Link
+                  href={getTicketDetailHref(nextTicket.id, returnHref)}
+                  title={`Next ticket: #${nextTicket.number} ${nextTicket.subject}`}
+                >
+                  Next
+                  <ChevronRight className="size-4" />
+                </Link>
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" disabled className="bg-white">
+                Next
+                <ChevronRight className="size-4" />
+              </Button>
+            )}
+            <TicketPropertiesMenu
+              agents={agents}
+              assignedToId={ticket.assignedToId}
+              markUnreadReturnHref={returnHref}
+              priority={ticket.priority}
+              status={ticket.status}
+              tagLinks={ticket.tagLinks}
+              tags={tags}
+              ticketId={ticket.id}
+              ticketNumber={ticket.number}
+            />
+          </div>
           <TicketTimeline
             cannedResponses={cannedResponses}
             currentUserId={viewer?.id ?? null}
