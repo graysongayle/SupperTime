@@ -67,8 +67,8 @@ const statusStyles: Record<TicketStatusValue, string> = {
 };
 
 const priorityStyles: Record<TicketPriorityValue, string> = {
-  [TicketPriority.URGENT]: "text-red-700",
-  [TicketPriority.HIGH]: "text-orange-700",
+  [TicketPriority.URGENT]: "font-bold text-red-700",
+  [TicketPriority.HIGH]: "font-bold text-red-700",
   [TicketPriority.NORMAL]: "text-muted-foreground",
   [TicketPriority.LOW]: "text-muted-foreground",
 };
@@ -1001,7 +1001,8 @@ export function TicketBulkTable({
       ) : null}
       <div className="divide-y divide-zinc-200 lg:hidden">
         {displayTickets.map((ticket) => {
-          const { agingState, customerName } = getTicketDisplayData(ticket);
+          const { agingState, assigneeName, customerName } =
+            getTicketDisplayData(ticket);
 
           return (
             <div
@@ -1032,18 +1033,24 @@ export function TicketBulkTable({
                     >
                       #{ticket.number}
                     </Link>
+                    <Badge
+                      variant="outline"
+                      className={statusStyles[ticket.status]}
+                    >
+                      {statusLabels[ticket.status]}
+                    </Badge>
                     {ticket._count.attachments > 0 ? (
                       <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
                         <Paperclip className="size-3" />
                         {ticket._count.attachments}
                       </span>
                     ) : null}
-                    {ticket.hasNewCustomerResponse ? (
+                    {agingState ? (
                       <Badge
                         variant="outline"
-                        className="border-cyan-200 bg-cyan-100 text-cyan-800"
+                        className={getTicketAgingClass(agingState.severity)}
                       >
-                        New
+                        {agingState.label} · {agingState.ageLabel}
                       </Badge>
                     ) : null}
                   </div>
@@ -1061,40 +1068,52 @@ export function TicketBulkTable({
                   {ticket.subject}
                 </Link>
                 {renderTicketTags(ticket)}
-                <div className="mt-1 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
-                  {customerName}
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <Badge
-                    variant="outline"
-                    className={statusStyles[ticket.status]}
-                  >
-                    {statusLabels[ticket.status]}
-                  </Badge>
-                  <span className={priorityStyles[ticket.priority]}>
-                    {priorityLabels[ticket.priority]}
+                <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+                  <span className="break-words [overflow-wrap:anywhere]">
+                    <span className="font-semibold text-zinc-950">
+                      Customer:
+                    </span>{" "}
+                    {customerName}
                   </span>
+                  <span aria-hidden="true" className="text-zinc-300">
+                    |
+                  </span>
+                  <span className="break-words [overflow-wrap:anywhere]">
+                    <span className="font-semibold text-zinc-950">
+                      Priority:
+                    </span>{" "}
+                    <span className={priorityStyles[ticket.priority]}>
+                      {priorityLabels[ticket.priority]}
+                    </span>
+                  </span>
+                  <span aria-hidden="true" className="text-zinc-300">
+                    |
+                  </span>
+                  <span className="break-words [overflow-wrap:anywhere]">
+                    <span className="font-semibold text-zinc-950">
+                      Assignee:
+                    </span>{" "}
+                    {assigneeName}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
                   <span>
-                    Customer{" "}
+                    <span className="font-semibold text-zinc-950">
+                      Customer:
+                    </span>{" "}
                     {formatOptionalRelativeTime(
                       ticket.lastCustomerMessageAt,
                       renderedAt,
                     )}
                   </span>
+                  <span aria-hidden="true" className="text-zinc-300">
+                    |
+                  </span>
                   <span>
-                    Update {formatRelativeTime(ticket.updatedAt, renderedAt)}
+                    <span className="font-semibold text-zinc-950">Update:</span>{" "}
+                    {formatRelativeTime(ticket.updatedAt, renderedAt)}
                   </span>
                 </div>
-                {agingState ? (
-                  <div className="mt-2">
-                    <Badge
-                      variant="outline"
-                      className={getTicketAgingClass(agingState.severity)}
-                    >
-                      {agingState.label} · {agingState.ageLabel}
-                    </Badge>
-                  </div>
-                ) : null}
               </div>
             </div>
           );
@@ -1203,15 +1222,32 @@ export function TicketBulkTable({
                           {ticket.subject}
                         </Link>
                         {renderTicketTags(ticket)}
-                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground 2xl:hidden">
+                        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground 2xl:hidden">
                           <span className="break-words [overflow-wrap:anywhere]">
-                            Customer: {customerName}
+                            <span className="font-semibold text-zinc-950">
+                              Customer:
+                            </span>{" "}
+                            {customerName}
                           </span>
-                          <span className={priorityStyles[ticket.priority]}>
-                            Priority: {priorityLabels[ticket.priority]}
+                          <span aria-hidden="true" className="text-zinc-300">
+                            |
                           </span>
                           <span className="break-words [overflow-wrap:anywhere]">
-                            Assignee: {assigneeName}
+                            <span className="font-semibold text-zinc-950">
+                              Priority:
+                            </span>{" "}
+                            <span className={priorityStyles[ticket.priority]}>
+                              {priorityLabels[ticket.priority]}
+                            </span>
+                          </span>
+                          <span aria-hidden="true" className="text-zinc-300">
+                            |
+                          </span>
+                          <span className="break-words [overflow-wrap:anywhere]">
+                            <span className="font-semibold text-zinc-950">
+                              Assignee:
+                            </span>{" "}
+                            {assigneeName}
                           </span>
                         </div>
                       </div>
@@ -1220,14 +1256,6 @@ export function TicketBulkTable({
                           <Paperclip className="size-3" />
                           {ticket._count.attachments}
                         </span>
-                      ) : null}
-                      {ticket.hasNewCustomerResponse ? (
-                        <Badge
-                          variant="outline"
-                          className="shrink-0 border-cyan-200 bg-cyan-100 text-cyan-800"
-                        >
-                          New
-                        </Badge>
                       ) : null}
                     </div>
                   </TableCell>
