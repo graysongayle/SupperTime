@@ -64,6 +64,7 @@ type TicketPropertiesMenuProps = {
   assignedToId: string | null;
   hasNewCustomerResponse?: boolean;
   priority: TicketPriorityValue;
+  markUnreadReturnHref?: string;
   status: TicketStatusValue;
   tagLinks: Array<{
     tagId: string;
@@ -77,6 +78,7 @@ export function TicketPropertiesMenu({
   agents,
   assignedToId,
   hasNewCustomerResponse = false,
+  markUnreadReturnHref,
   priority,
   status,
   tagLinks,
@@ -135,7 +137,12 @@ export function TicketPropertiesMenu({
           description: result.message,
         });
         setCurrentHasNewCustomerResponse(true);
-        router.refresh();
+
+        if (markUnreadReturnHref) {
+          router.push(markUnreadReturnHref);
+        } else {
+          router.refresh();
+        }
       } catch (error) {
         toast({
           variant: "destructive",

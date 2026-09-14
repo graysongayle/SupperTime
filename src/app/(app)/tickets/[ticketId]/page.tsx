@@ -580,6 +580,7 @@ export default async function TicketDetailPage({
           <TicketPropertiesMenu
             agents={agents}
             assignedToId={ticket.assignedToId}
+            markUnreadReturnHref={returnHref}
             priority={ticket.priority}
             status={ticket.status}
             tagLinks={ticket.tagLinks}
