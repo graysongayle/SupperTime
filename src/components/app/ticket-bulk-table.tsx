@@ -1205,13 +1205,13 @@ export function TicketBulkTable({
                         {renderTicketTags(ticket)}
                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground 2xl:hidden">
                           <span className="break-words [overflow-wrap:anywhere]">
-                            {customerName}
+                            Customer: {customerName}
                           </span>
                           <span className={priorityStyles[ticket.priority]}>
-                            {priorityLabels[ticket.priority]}
+                            Priority: {priorityLabels[ticket.priority]}
                           </span>
                           <span className="break-words [overflow-wrap:anywhere]">
-                            {assigneeName}
+                            Assignee: {assigneeName}
                           </span>
                         </div>
                       </div>
