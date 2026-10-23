@@ -221,7 +221,7 @@ function createMentionBadgeElement(user: MentionUser, onRemove: () => void) {
     user.name ? `${user.name} <${user.email}>` : user.email,
   );
   badge.className =
-    "mx-0.5 inline-flex h-5 max-w-44 select-none items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2 align-baseline text-xs font-medium text-cyan-800";
+    "ms-0.5 me-1.5 inline-flex h-5 max-w-44 select-none items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2 align-baseline text-xs font-medium text-cyan-800";
   label.className = "min-w-0 truncate";
   label.textContent = `@${handle}`;
   removeButton.type = "button";
@@ -492,7 +492,7 @@ export function InternalNoteForm({
       syncEditorState();
       editor.focus();
     });
-    const trailingSpace = document.createTextNode(" ");
+    const trailingSpace = document.createTextNode("\u00a0");
     const fragment = document.createDocumentFragment();
 
     fragment.append(badge, trailingSpace);
