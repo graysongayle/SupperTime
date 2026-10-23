@@ -14,7 +14,10 @@ import Link from "next/link";
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { addInternalNote } from "@/app/(app)/tickets/actions";
+import {
+  addInternalNote,
+  replyToInternalMessage,
+} from "@/app/(app)/tickets/actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -43,6 +46,8 @@ type CannedResponse = {
 
 type InternalNoteFormProps = {
   cannedResponses?: CannedResponse[];
+  replyToMessageId?: string;
+  replyRecipients?: string[];
   currentUserId: string | null;
   mentionUsers: MentionUser[];
   ticketId: string;
@@ -410,6 +415,8 @@ function createActiveMentionRangeAtCaret(
 
 export function InternalNoteForm({
   cannedResponses = [],
+  replyToMessageId,
+  replyRecipients = [],
   currentUserId,
   mentionUsers,
   ticketId,
@@ -427,8 +434,11 @@ export function InternalNoteForm({
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [isPending, startTransition] = useTransition();
   const mentionableUsers = useMemo(
-    () => mentionUsers.filter((user) => user.id !== currentUserId),
-    [currentUserId, mentionUsers],
+    () =>
+      replyToMessageId
+        ? []
+        : mentionUsers.filter((user) => user.id !== currentUserId),
+    [currentUserId, mentionUsers, replyToMessageId],
   );
   const selectedTemplate =
     cannedResponses.find((template) => template.id === selectedTemplateId) ??
@@ -634,12 +644,19 @@ export function InternalNoteForm({
 
     startTransition(async () => {
       try {
-        await addInternalNote(formData);
+        if (replyToMessageId) {
+          formData.set("replyToMessageId", replyToMessageId);
+          await replyToInternalMessage(formData);
+        } else {
+          await addInternalNote(formData);
+        }
         resetEditor();
         toast({
           variant: "success",
-          title: "Internal note added",
-          description: "Mentioned teammates were notified by email.",
+          title: replyToMessageId ? "Internal reply sent" : "Internal note added",
+          description: replyToMessageId
+            ? "Only people on the original internal message were emailed."
+            : "Mentioned teammates were notified by email.",
         });
         setOpen(false);
         router.refresh();
@@ -659,14 +676,18 @@ export function InternalNoteForm({
       <DialogTrigger asChild>
         <Button type="button" variant="outline" size="sm" className="bg-white">
           <MessageSquarePlus data-icon="inline-start" />
-          Add internal note
+          {replyToMessageId ? "Reply internally" : "Add internal note"}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[calc(100vh-2rem)] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add internal note</DialogTitle>
-          <DialogDescription>
-            Private note for the support team. Use @name to notify a teammate.
+          <DialogTitle>
+            {replyToMessageId ? "Reply to internal message" : "Add internal note"}
+          </DialogTitle>
+          <DialogDescription className="break-words">
+            {replyToMessageId
+              ? `Email to: ${replyRecipients.join(", ")}. This reply stays internal. Email responses go to your mailbox.`
+              : "Private note for the support team. Use @name to notify a teammate."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-3">
@@ -872,7 +893,7 @@ export function InternalNoteForm({
               Cancel
             </Button>
             <Button type="submit" disabled={isPending}>
-              Add note
+              {replyToMessageId ? "Send internal reply" : "Add note"}
             </Button>
           </DialogFooter>
         </form>

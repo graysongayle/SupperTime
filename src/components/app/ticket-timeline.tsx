@@ -36,6 +36,7 @@ import {
   TicketParticipantRole,
 } from "@/generated/prisma/enums";
 import { cn } from "@/lib/utils";
+import { getInternalReplyRecipients } from "@/lib/internal-reply";
 
 type TimelineMessage = {
   id: string;
@@ -1374,8 +1375,20 @@ export function TicketTimeline({
                     {getMessageAuthor(message)}
                   </span>
                 </button>
-                <span className="flex min-w-0 items-center gap-2">
+                <span className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                   <TranslateMessageButton message={message} />
+                  {message.visibility === MessageVisibility.INTERNAL &&
+                  message.authorType !== MessageAuthorType.SYSTEM &&
+                  getInternalReplyRecipients(message, supportEmail).length > 0 ? (
+                    <InternalNoteForm
+                      cannedResponses={cannedResponses}
+                      currentUserId={currentUserId}
+                      mentionUsers={[]}
+                      ticketId={ticketId}
+                      replyToMessageId={message.id}
+                      replyRecipients={getInternalReplyRecipients(message, supportEmail)}
+                    />
+                  ) : null}
                   <ReplyDialog
                     cannedResponses={cannedResponses}
                     message={message}

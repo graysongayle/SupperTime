@@ -30,10 +30,13 @@ import {
   buildTicketReplyAddress,
   createEmailReplyToken,
   getAutomatedReplyHeaders,
+  getSupportSender,
   isSupportAutoReplyEnabled,
   sendSupportEmail,
   textToHtml,
 } from "@/lib/support-email";
+
+import { getInternalReplyRecipients } from "@/lib/internal-reply";
 
 const validStatuses = new Set<TicketStatusValue>(Object.values(TicketStatus));
 const validPriorities = new Set<TicketPriorityValue>(Object.values(TicketPriority));
@@ -1005,6 +1008,65 @@ export async function deleteCannedResponse(formData: FormData) {
   revalidatePath("/tickets/templates");
 }
 
+export async function replyToInternalMessage(formData: FormData) {
+  const actor = await requireTicketUser();
+  const ticketId = requiredString(formData, "ticketId");
+  const messageId = requiredString(formData, "replyToMessageId");
+  const body = requiredString(formData, "body");
+  const original = await prisma.ticketMessage.findFirst({
+    where: {
+      id: messageId,
+      ticketId,
+      visibility: MessageVisibility.INTERNAL,
+      authorType: { in: [MessageAuthorType.AGENT, MessageAuthorType.CUSTOMER] },
+    },
+    include: { agent: true, ticket: { select: { number: true, subject: true } } },
+  });
+
+  if (!original) {
+    throw new Error("Internal message not found.");
+  }
+
+  const recipients = getInternalReplyRecipients(original, getSupportSender().email);
+  if (recipients.length === 0) {
+    throw new Error("This internal message has no email recipients.");
+  }
+  const submittedHtml = optionalString(formData, "bodyHtml");
+  const bodyHtml = submittedHtml
+    ? sanitizeSubmittedReplyHtml(submittedHtml)
+    : renderReplyBodyHtml(body);
+  // Only the new internal response is sent; no public thread or customer fallback.
+  const result = await sendSupportEmail({
+    to: recipients.join(","),
+    replyTo: actor.email,
+    subject: `Re: Internal message on ticket #${original.ticket.number}: ${original.ticket.subject}`,
+    textBody: body,
+    htmlBody: bodyHtml,
+  });
+  if (result.skipped) {
+    throw new Error(result.reason);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.ticketMessage.create({
+      data: {
+        ticketId,
+        body,
+        bodyHtml,
+        authorType: MessageAuthorType.AGENT,
+        visibility: MessageVisibility.INTERNAL,
+        agentId: actor.id,
+        emailFrom: formatActor(actor),
+        emailTo: recipients.join(","),
+        emailMessageId: result.messageId,
+      },
+    });
+    await tx.ticket.update({ where: { id: ticketId }, data: { updatedAt: new Date() } });
+  });
+  revalidatePath(`/tickets/${ticketId}`);
+  revalidatePath("/tickets");
+}
+
 export async function addInternalNote(formData: FormData) {
   const actor = await requireTicketUser();
   const ticketId = requiredString(formData, "ticketId");
@@ -1018,6 +1080,12 @@ export async function addInternalNote(formData: FormData) {
     .map((value) => String(value).trim())
     .filter(Boolean);
 
+  const mentionedUsers = await resolveMentionedUsers(
+    body,
+    actor.id,
+    mentionedUserIds,
+  );
+
   const ticket = await prisma.$transaction(async (tx) => {
     await tx.ticketMessage.create({
       data: {
@@ -1027,6 +1095,8 @@ export async function addInternalNote(formData: FormData) {
         authorType: MessageAuthorType.AGENT,
         visibility: MessageVisibility.INTERNAL,
         agentId: actor.id,
+        emailFrom: formatActor(actor),
+        emailTo: mentionedUsers.map((user) => user.email).join(",") || null,
       },
     });
 
@@ -1044,12 +1114,6 @@ export async function addInternalNote(formData: FormData) {
       },
     });
   });
-
-  const mentionedUsers = await resolveMentionedUsers(
-    body,
-    actor.id,
-    mentionedUserIds,
-  );
 
   await Promise.all(
     mentionedUsers.map((mentionedUser) =>

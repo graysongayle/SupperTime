@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { MoreHorizontal } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { unstable_rethrow, useRouter } from "next/navigation";
 
 import {
   addTicketTag,
@@ -149,6 +149,8 @@ export function TicketPropertiesMenu({
           router.refresh();
         }
       } catch (error) {
+        // Let Next.js handle the server action's redirect back to the list.
+        unstable_rethrow(error);
         toast({
           variant: "destructive",
           title: "Update failed",
