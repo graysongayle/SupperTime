@@ -95,7 +95,13 @@ export function TicketPropertiesForm({
   }
 
   return (
-    <form action={submitAction} className="flex flex-col gap-4">
+    <form
+      action={submitAction}
+      // React resets action forms after a successful save. Keep the controlled
+      // selects on their saved values instead of their initial DOM defaults.
+      onReset={(event) => event.preventDefault()}
+      className="flex flex-col gap-4"
+    >
       <div className="flex flex-col gap-2">
         <input type="hidden" name="ticketId" value={ticketId} />
         <div className="flex items-center gap-1">

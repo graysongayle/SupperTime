@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -490,6 +490,7 @@ function ReplyDialog({
   ticketId: string;
 }) {
   const [open, setOpen] = useState(false);
+  const replyDialogRef = useRef<HTMLDivElement>(null);
   const recipients = getReplyRecipients({ message, supportEmail });
 
   if (!isReplyableMessage(message) || recipients.toEmails.length === 0) {
@@ -504,7 +505,18 @@ function ReplyDialog({
           Reply
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[calc(100vh-2rem)] max-w-5xl overflow-y-auto">
+      <DialogContent
+        ref={replyDialogRef}
+        onOpenAutoFocus={(event) => {
+          const editor = replyDialogRef.current?.querySelector<HTMLElement>("#replyBody");
+
+          if (editor) {
+            event.preventDefault();
+            editor.focus();
+          }
+        }}
+        className="max-h-[calc(100vh-2rem)] max-w-5xl overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle>Reply to this response</DialogTitle>
         </DialogHeader>

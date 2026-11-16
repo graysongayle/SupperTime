@@ -679,7 +679,15 @@ export function InternalNoteForm({
           {replyToMessageId ? "Reply internally" : "Add internal note"}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[calc(100vh-2rem)] max-w-2xl overflow-y-auto">
+      <DialogContent
+        onOpenAutoFocus={(event) => {
+          if (editorRef.current) {
+            event.preventDefault();
+            editorRef.current.focus();
+          }
+        }}
+        className="max-h-[calc(100vh-2rem)] max-w-2xl overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle>
             {replyToMessageId ? "Reply to internal message" : "Add internal note"}
