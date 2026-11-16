@@ -1027,7 +1027,7 @@ export async function replyToInternalMessage(formData: FormData) {
     throw new Error("Internal message not found.");
   }
 
-  const recipients = getInternalReplyRecipients(original, getSupportSender().email);
+  const recipients = getInternalReplyRecipients(original, getSupportSender().email, actor.email);
   if (recipients.length === 0) {
     throw new Error("This internal message has no email recipients.");
   }

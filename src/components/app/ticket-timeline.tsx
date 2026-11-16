@@ -62,6 +62,7 @@ type TimelineAttachment = {
 
 type TicketTimelineProps = {
   cannedResponses: CannedResponse[];
+  currentUserEmail: string | null;
   currentUserId: string | null;
   description: string | null;
   mentionUsers: MentionUser[];
@@ -1174,6 +1175,7 @@ function isSafeUrl(value: string) {
 
 export function TicketTimeline({
   cannedResponses,
+  currentUserEmail,
   currentUserId,
   description,
   mentionUsers,
@@ -1391,14 +1393,19 @@ export function TicketTimeline({
                   <TranslateMessageButton message={message} />
                   {message.visibility === MessageVisibility.INTERNAL &&
                   message.authorType !== MessageAuthorType.SYSTEM &&
-                  getInternalReplyRecipients(message, supportEmail).length > 0 ? (
+                  getInternalReplyRecipients(message, supportEmail, currentUserEmail).length > 0 ? (
                     <InternalNoteForm
                       cannedResponses={cannedResponses}
                       currentUserId={currentUserId}
                       mentionUsers={[]}
                       ticketId={ticketId}
                       replyToMessageId={message.id}
-                      replyRecipients={getInternalReplyRecipients(message, supportEmail)}
+                      replyRecipients={getInternalReplyRecipients(message, supportEmail, currentUserEmail).map((email) => ({
+                        email,
+                        name: message.agent?.email.toLowerCase() === email
+                          ? message.agent.name
+                          : mentionUsers.find((user) => user.email.toLowerCase() === email)?.name ?? null,
+                      }))}
                     />
                   ) : null}
                   <ReplyDialog

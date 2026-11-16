@@ -611,6 +611,7 @@ export default async function TicketDetailPage({
           </div>
           <TicketTimeline
             cannedResponses={cannedResponses}
+            currentUserEmail={viewer?.email ?? null}
             currentUserId={viewer?.id ?? null}
             description={ticket.description}
             mentionUsers={agents}

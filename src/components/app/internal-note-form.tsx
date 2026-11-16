@@ -47,7 +47,7 @@ type CannedResponse = {
 type InternalNoteFormProps = {
   cannedResponses?: CannedResponse[];
   replyToMessageId?: string;
-  replyRecipients?: string[];
+  replyRecipients?: { email: string; name: string | null }[];
   currentUserId: string | null;
   mentionUsers: MentionUser[];
   ticketId: string;
@@ -694,10 +694,23 @@ export function InternalNoteForm({
           </DialogTitle>
           <DialogDescription className="break-words">
             {replyToMessageId
-              ? `Email to: ${replyRecipients.join(", ")}. This reply stays internal. Email responses go to your mailbox.`
+              ? "This reply stays internal. Email responses go to your mailbox."
               : "Private note for the support team. Use @name to notify a teammate."}
           </DialogDescription>
         </DialogHeader>
+        {replyToMessageId ? (
+          <div className="flex min-w-0 flex-col gap-2 rounded-lg border bg-muted/50 p-3">
+            <p className="text-sm font-medium">Email recipients</p>
+            <ul aria-label="Internal reply recipients" className="flex min-w-0 flex-col gap-2">
+              {replyRecipients.map((recipient) => (
+                <li key={recipient.email} className="min-w-0 text-sm [overflow-wrap:anywhere]">
+                  {recipient.name ? <p className="font-medium">{recipient.name}</p> : null}
+                  <p className="text-muted-foreground">{recipient.email}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <form onSubmit={submit} className="flex flex-col gap-3">
           <input type="hidden" name="ticketId" value={ticketId} />
           <input type="hidden" name="body" value={body} />

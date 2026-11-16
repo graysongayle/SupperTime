@@ -1,5 +1,9 @@
 # Decisions
 
+## 2026-11-16: Internal replies identify the author and exclude the sender
+
+For an agent-authored internal message, use the linked agent as the authoritative author rather than legacy From metadata. For messages without a linked agent, use From. Include the original To and Cc addresses, excluding the replying agent and support addresses. Apply the same helper in the recipient preview and server send action. Show recipients by name (when known) and email in the internal-reply dialog. Ticket customers and participants remain excluded unless explicitly present on the original message.
+
 ## 2026-10-20: Restrict internal reply email to the original message
 
 Internal replies remain internal notes. The server derives email recipients solely from the original internal message's From, To, and Cc addresses, falling back to its agent author only when From is absent. Support addresses are excluded. Ticket customers and participants are never added automatically; a customer receives an internal reply only when their address appears on the original message. Mentions cannot add recipients to internal replies.

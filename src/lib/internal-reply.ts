@@ -9,18 +9,22 @@ type InternalReplyMessage = {
 export function getInternalReplyRecipients(
   message: InternalReplyMessage,
   supportEmail: string,
+  replyingEmail: string | null,
 ): string[] {
   const addresses = [
-    message.emailFrom || message.agent?.email,
+    // The linked author is authoritative for agent notes, including legacy notes
+    // whose From metadata may identify the notified teammate instead.
+    message.agent?.email || message.emailFrom,
     message.emailTo,
     message.emailCc,
   ].flatMap((value) => value?.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi) ?? []);
-  const [supportLocal, supportDomain] = supportEmail.toLowerCase().split("@");
+  const [supportLocal, supportDomain] = supportEmail.trim().toLowerCase().split("@");
+  const replyingAddress = replyingEmail?.trim().toLowerCase();
 
   return [...new Set(addresses.map((email) => email.toLowerCase()))].filter(
     (email) => {
       const [local, domain] = email.split("@");
-      return !(
+      return email !== replyingAddress && !(
         domain === supportDomain &&
         (local === supportLocal || local.startsWith(`${supportLocal}+`))
       );
