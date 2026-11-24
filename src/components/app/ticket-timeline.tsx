@@ -585,13 +585,11 @@ function MessageRecipients({
   message: TimelineMessage;
   participants: TimelineParticipant[];
 }) {
-  if (message.visibility === MessageVisibility.INTERNAL) {
-    return null;
-  }
-
-  const from = message.emailFrom ?? getMessageAuthor(message);
+  const isInternal = message.visibility === MessageVisibility.INTERNAL;
+  const from = isInternal ? null : message.emailFrom ?? getMessageAuthor(message);
   const hasMessageRecipients = Boolean(message.emailTo || message.emailCc);
-  const showTicketParticipants = !hasMessageRecipients && participants.length > 0;
+  const showTicketParticipants =
+    !isInternal && !hasMessageRecipients && participants.length > 0;
 
   if (!from && !message.emailTo && !message.emailCc && !showTicketParticipants) {
     return null;
@@ -1341,6 +1339,7 @@ export function TicketTimeline({
         {messages.map((message, index) => {
           const compactActivity = getCompactTimelineActivity(message);
           const isCollapsed = collapsedIds.includes(message.id);
+          const isInternal = message.visibility === MessageVisibility.INTERNAL;
           const messageViewMode = messageViewModes[message.id] ?? "formatted";
 
           if (compactActivity) {
@@ -1391,7 +1390,7 @@ export function TicketTimeline({
                 </button>
                 <span className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                   <TranslateMessageButton message={message} />
-                  {message.visibility === MessageVisibility.INTERNAL &&
+                  {isInternal &&
                   message.authorType !== MessageAuthorType.SYSTEM &&
                   getInternalReplyRecipients(message, supportEmail, currentUserEmail).length > 0 ? (
                     <InternalNoteForm
@@ -1429,16 +1428,24 @@ export function TicketTimeline({
                 </span>
               </div>
 
+              {isInternal ? (
+                <div className="min-w-0 px-3">
+                  <MessageRecipients message={message} participants={participants} />
+                </div>
+              ) : null}
+
               {isCollapsed ? (
                 <p className="truncate px-3 py-3 pl-10 text-sm text-muted-foreground">
                   {getCollapsedPreview(message.body)}
                 </p>
               ) : (
                 <div className="min-w-0 px-3 pb-3">
-                  <MessageRecipients
-                    message={message}
-                    participants={participants}
-                  />
+                  {!isInternal ? (
+                    <MessageRecipients
+                      message={message}
+                      participants={participants}
+                    />
+                  ) : null}
                   <MessageBody
                     message={message}
                     viewMode={messageViewMode}
